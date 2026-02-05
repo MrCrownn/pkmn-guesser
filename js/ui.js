@@ -95,6 +95,9 @@ export const UI = {
         oldConfirm.parentNode.replaceChild(newConfirm, oldConfirm);
         oldCancel.parentNode.replaceChild(newCancel, oldCancel);
 
+        // Update References
+        DOM.uiModalConfirm = newConfirm;
+        DOM.uiModalCancel = newCancel;
         if (isAlert) {
             newCancel.classList.add('hidden');
             newConfirm.textContent = "OK";
@@ -105,7 +108,12 @@ export const UI = {
             };
         } else {
             newCancel.classList.remove('hidden');
+
             newConfirm.textContent = "Confirmar";
+            newCancel.textContent = "Cancelar";
+
+            newConfirm.className = "w-1/2 py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all";
+            newCancel.className = "w-1/2 py-3 rounded-xl font-bold text-slate-700 bg-slate-200 hover:bg-slate-300 dark:text-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 shadow-lg shadow-slate-400/30 transition-all";
             newConfirm.onclick = () => {
                  DOM.uiModal.classList.add('hidden');
                  if(onConfirm) onConfirm();
