@@ -98,7 +98,7 @@ export const UI = {
         if (isAlert) {
             newCancel.classList.add('hidden');
             newConfirm.textContent = "OK";
-            newConfirm.className = "w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded";
+            newConfirm.className = "w-full py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all";
             newConfirm.onclick = () => {
                  DOM.uiModal.classList.add('hidden');
                  if(onConfirm) onConfirm();
