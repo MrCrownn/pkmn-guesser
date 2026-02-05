@@ -1,6 +1,14 @@
+
 import { gameState } from './state.js';
 
-// Usamos getters para asegurar que el DOM esté listo al acceder
+export const typeTranslations = {
+    normal: "Normal", fire: "Fuego", water: "Agua", grass: "Planta",
+    electric: "Eléctrico", ice: "Hielo", fighting: "Lucha", poison: "Veneno",
+    ground: "Tierra", flying: "Volador", psychic: "Psíquico", bug: "Bicho",
+    rock: "Roca", ghost: "Fantasma", dragon: "Dragón", steel: "Acero", fairy: "Hada"
+};
+
+
 const DOM = {
     // Pantallas
     get modeScreen() { return document.getElementById('modeScreen'); },
@@ -19,8 +27,8 @@ const DOM = {
     get filterModal() { return document.getElementById('filterModal'); },
     get uiModal() { return document.getElementById('uiModal'); },
     
-    // Elementos internos con IDs corregidos
-    get btnOnline() { return document.getElementById('btn-mode-online'); }, // Corregido
+    // Elementos internos
+    get btnOnline() { return document.getElementById('btn-mode-online'); },
     get connectionStatus() { return document.getElementById('connectionStatus'); },
     get waitingCode() { return document.getElementById('waitingCode'); },
     get joinCodeInput() { return document.getElementById('joinCodeInput'); },
@@ -48,9 +56,9 @@ const DOM = {
     get uiModalCancel() { return document.getElementById('uiModalCancel'); },
     
     // Botones de acción
-    get guessBtn() { return document.getElementById('btn-open-guess'); }, // Corregido
+    get guessBtn() { return document.getElementById('btn-open-guess'); },
     get askTypesBtn() { return document.getElementById('askTypesBtn'); },
-    get visibilityBtn() { return document.getElementById('btn-visibility'); }, // Corregido
+    get visibilityBtn() { return document.getElementById('btn-visibility'); },
     get themeIcon() { return document.getElementById('themeIcon'); },
     
     // Overlays
@@ -73,47 +81,46 @@ export const UI = {
         if (connected) {
             DOM.btnOnline.classList.remove('opacity-50', 'cursor-not-allowed');
             DOM.connectionStatus.textContent = "● Conectado";
-            DOM.connectionStatus.className = "text-xs font-bold text-green-500";
+            DOM.connectionStatus.style.color = "green";
         } else {
             DOM.connectionStatus.textContent = "Offline";
-            DOM.connectionStatus.className = "text-xs font-bold text-red-500";
+            DOM.connectionStatus.style.color = "red";
         }
     },
 
+   
     showModal: (title, text, onConfirm, isAlert = false) => {
         DOM.uiModalTitle.textContent = title;
         DOM.uiModalText.textContent = text;
         DOM.uiModal.classList.remove('hidden');
         
-        // Clonar para limpiar eventos previos
+        // Clonación para limpiar eventos
         const oldConfirm = DOM.uiModalConfirm;
         const oldCancel = DOM.uiModalCancel;
-        
         const newConfirm = oldConfirm.cloneNode(true);
         const newCancel = oldCancel.cloneNode(true);
-        
         oldConfirm.parentNode.replaceChild(newConfirm, oldConfirm);
         oldCancel.parentNode.replaceChild(newCancel, oldCancel);
+        
+        // Resetear textos y visibilidad
+        newConfirm.textContent = isAlert ? "OK" : "Confirmar";
+        newCancel.textContent = "Cancelar";
+        
+        // --- APLICAR CLASES CSS MANUALMENTE PARA ASEGURAR ESTILO ---
+        // Botón Confirmar (Azul)
+        newConfirm.className = "btn-primary flex-1"; // Usa la clase de styles.css
+        
+        // Botón Cancelar (Gris)
+        newCancel.className = "btn-secondary flex-1"; // Usa la clase de styles.css
 
-        // Update References
-        DOM.uiModalConfirm = newConfirm;
-        DOM.uiModalCancel = newCancel;
         if (isAlert) {
-            newCancel.classList.add('hidden');
-            newConfirm.textContent = "OK";
-            newConfirm.className = "w-full py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all";
+            newCancel.classList.add('hidden'); // Ocultar cancelar en alertas
             newConfirm.onclick = () => {
                  DOM.uiModal.classList.add('hidden');
                  if(onConfirm) onConfirm();
             };
         } else {
             newCancel.classList.remove('hidden');
-
-            newConfirm.textContent = "Confirmar";
-            newCancel.textContent = "Cancelar";
-
-            newConfirm.className = "w-1/2 py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all";
-            newCancel.className = "w-1/2 py-3 rounded-xl font-bold text-slate-700 bg-slate-200 hover:bg-slate-300 dark:text-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 shadow-lg shadow-slate-400/30 transition-all";
             newConfirm.onclick = () => {
                  DOM.uiModal.classList.add('hidden');
                  if(onConfirm) onConfirm();
@@ -132,17 +139,24 @@ export const UI = {
             if (gameState.hideEliminated && isEliminated) return;
 
             const div = document.createElement('div');
-            div.className = `card relative bg-white dark:bg-slate-800 rounded-xl p-1 shadow-sm border border-slate-100 dark:border-slate-700 ${isEliminated ? 'eliminated' : 'cursor-pointer hover:scale-105'}`;
-            div.classList.add(`t-${poke.types[0]}`, 'card-border');
+            // Aplicar clases de CSS puro
+            div.className = `card ${isEliminated ? 'eliminated' : ''}`;
             
+            // Añadir clase de color de tipo (ej: t-fire)
+            // IMPORTANTE: Aseguramos que el CSS tenga estos colores definidos
+            const typeClass = `t-${poke.types[0]}`;
+            div.classList.add(typeClass);
+            div.classList.add('card-border'); // Borde inferior de color
+
+            // Crear bolitas de tipos
             const typesHtml = poke.types.map(t => 
-                `<span class="inline-block w-4 h-4 rounded-full t-${t} type-badge border border-slate-100 dark:border-slate-700 shadow-sm" title="${t}"></span>`
+                `<span class="type-badge t-${t}" title="${typeTranslations[t] || t}"></span>`
             ).join('');
 
             div.innerHTML = `
-                <img src="${poke.image}" class="w-full aspect-square object-contain bg-slate-50 dark:bg-slate-900 rounded-lg mb-1" loading="lazy">
-                <div class="text-center text-[10px] sm:text-xs font-bold truncate px-1 text-slate-700 dark:text-slate-200">${poke.name}</div>
-                <div class="flex justify-center gap-1 mt-1 pb-1">${typesHtml}</div>
+                <img src="${poke.image}" loading="lazy">
+                <div style="font-weight:bold; font-size:0.75rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 4px;">${poke.name}</div>
+                <div style="display:flex; justify-content:center; gap:4px; margin-top:4px;">${typesHtml}</div>
             `;
             
             div.onclick = (e) => { e.stopPropagation(); onClick(poke); };
@@ -154,12 +168,14 @@ export const UI = {
         DOM.hudSecretImg.src = secret.image;
         DOM.hudSecretName.textContent = secret.name;
         DOM.turnStatus.textContent = isMyTurn ? "TU TURNO" : "ESPERANDO";
-        DOM.turnStatus.className = isMyTurn ? "font-black text-sm text-poke-blue dark:text-blue-400 animate-pulse" : "font-bold text-sm text-slate-400 dark:text-slate-500";
+        // Estilos directos para asegurar visibilidad
+        DOM.turnStatus.style.color = isMyTurn ? "var(--poke-blue)" : "gray";
+        DOM.turnStatus.style.fontWeight = "900";
     },
 
     showWinner: (isMeWinner, oppSecret) => {
         DOM.winnerTitle.textContent = isMeWinner ? "¡GANASTE!" : "DERROTA";
-        DOM.winnerTitle.className = isMeWinner ? "text-4xl font-black mb-2 text-green-500" : "text-4xl font-black mb-2 text-red-500";
+        DOM.winnerTitle.style.color = isMeWinner ? "green" : "red";
         DOM.winnerSubtitle.textContent = isMeWinner ? "¡Adivinaste correctamente!" : "Tu rival ganó la partida";
         DOM.winnerRevealImg.src = oppSecret.image;
         DOM.winnerRevealName.textContent = oppSecret.name;
@@ -168,10 +184,13 @@ export const UI = {
 
     updateVisibilityBtn: () => {
         if (!DOM.visibilityBtn) return;
+        // Cambiar estilo visual si está activo
         if (gameState.hideEliminated) {
-            DOM.visibilityBtn.classList.add('bg-blue-100', 'text-blue-600', 'dark:bg-blue-900/50', 'dark:text-blue-300');
+            DOM.visibilityBtn.style.backgroundColor = "#dbeafe"; // blue-100
+            DOM.visibilityBtn.style.color = "#2563eb"; // blue-600
         } else {
-            DOM.visibilityBtn.classList.remove('bg-blue-100', 'text-blue-600', 'dark:bg-blue-900/50', 'dark:text-blue-300');
+            DOM.visibilityBtn.style.backgroundColor = ""; // reset
+            DOM.visibilityBtn.style.color = "";
         }
     },
 
@@ -179,13 +198,11 @@ export const UI = {
         if (!DOM.askTypesBtn) return;
         if (count > 0) {
             DOM.askTypesBtn.disabled = false;
-            DOM.askTypesBtn.classList.remove('bg-slate-300', 'cursor-not-allowed', 'dark:bg-slate-700');
-            DOM.askTypesBtn.classList.add('bg-blue-600', 'hover:bg-blue-700', 'shadow-lg');
+            DOM.askTypesBtn.classList.remove('opacity-50', 'cursor-not-allowed');
             DOM.askTypesBtn.textContent = `Preguntar por ${count} Tipo${count > 1 ? 's' : ''}`;
         } else {
             DOM.askTypesBtn.disabled = true;
-            DOM.askTypesBtn.classList.add('bg-slate-300', 'cursor-not-allowed', 'dark:bg-slate-700');
-            DOM.askTypesBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700', 'shadow-lg');
+            DOM.askTypesBtn.classList.add('opacity-50', 'cursor-not-allowed');
             DOM.askTypesBtn.textContent = "Selecciona tipos primero";
         }
     },
@@ -228,8 +245,11 @@ export const UI = {
         
         DOM.modeScreen.classList.remove('hidden');
         
-        // Limpiar estilos de botones si existen
-        if (DOM.visibilityBtn) DOM.visibilityBtn.classList.remove('bg-blue-100', 'text-blue-600', 'dark:bg-blue-900/50', 'dark:text-blue-300');
+        // Resetear estilos manuales
+        if(DOM.visibilityBtn) {
+             DOM.visibilityBtn.style.backgroundColor = ""; 
+             DOM.visibilityBtn.style.color = "";
+        }
         if (DOM.guessBtn) DOM.guessBtn.classList.remove('opacity-50', 'cursor-not-allowed');
     }
 };
