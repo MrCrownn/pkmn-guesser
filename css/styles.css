@@ -163,11 +163,27 @@ html.dark .custom-scroll::-webkit-scrollbar-thumb { background-color: #475569; }
     display: inline-flex; align-items: center; justify-content: center;
     padding: 0.6rem 1rem; border-radius: 10px; font-weight: 700;
     background: var(--poke-blue); color: white; cursor: pointer; border: none;
+    box-shadow: 0 6px 18px rgba(59,130,246,0.18);
 }
 .btn-secondary {
     display: inline-flex; align-items: center; justify-content: center;
     padding: 0.5rem 0.8rem; border-radius: 10px; font-weight: 700;
     background: transparent; color: var(--poke-blue); border: 1px solid rgba(59,130,246,0.12); cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+/* Dark mode overrides to ensure buttons remain visible */
+html.dark .btn-primary {
+    background: #2563eb; color: #fff; box-shadow: 0 6px 18px rgba(37,99,235,0.18);
+}
+html.dark .btn-secondary {
+    background: rgba(59,130,246,0.06); color: #93c5fd; border-color: rgba(147,197,253,0.12);
+}
+
+/* Ensure disabled/low-opacity states still readable */
+.btn-secondary.opacity-50, .btn-secondary[disabled] {
+    opacity: 0.65 !important;
+    filter: none !important;
 }
 
 .hidden { display: none !important; }
