@@ -1,61 +1,75 @@
 import { gameState } from './state.js';
 
+// Usamos getters para asegurar que el DOM esté listo al acceder
 const DOM = {
-    modeScreen: document.getElementById('modeScreen'),
-    lobbyScreen: document.getElementById('lobbyScreen'),
-    waitingScreen: document.getElementById('waitingScreen'),
-    setupScreen: document.getElementById('setupScreen'),
-    loadingScreen: document.getElementById('loadingScreen'),
-    selectionScreen: document.getElementById('selectionScreen'),
-    gameBoardScreen: document.getElementById('gameBoardScreen'),
-    interstitialScreen: document.getElementById('interstitialScreen'),
-    onlineWaitScreen: document.getElementById('onlineWaitScreen'),
-    guessModal: document.getElementById('guessModal'),
-    winnerModal: document.getElementById('winnerModal'),
-    filterModal: document.getElementById('filterModal'),
-    uiModal: document.getElementById('uiModal'),
+    // Pantallas
+    get modeScreen() { return document.getElementById('modeScreen'); },
+    get lobbyScreen() { return document.getElementById('lobbyScreen'); },
+    get waitingScreen() { return document.getElementById('waitingScreen'); },
+    get setupScreen() { return document.getElementById('setupScreen'); },
+    get loadingScreen() { return document.getElementById('loadingScreen'); },
+    get selectionScreen() { return document.getElementById('selectionScreen'); },
+    get gameBoardScreen() { return document.getElementById('gameBoardScreen'); },
+    get interstitialScreen() { return document.getElementById('interstitialScreen'); },
+    get onlineWaitScreen() { return document.getElementById('onlineWaitScreen'); },
     
-    // Elementos internos
-    btnOnline: document.getElementById('btnOnline'),
-    connectionStatus: document.getElementById('connectionStatus'),
-    waitingCode: document.getElementById('waitingCode'),
-    joinCodeInput: document.getElementById('joinCodeInput'),
-    roomCodeDisplay: document.getElementById('roomCodeDisplay'),
-    turnStatus: document.getElementById('turnStatus'),
-    selectionGrid: document.getElementById('selectionGrid'),
-    mainGrid: document.getElementById('mainGrid'),
-    guessGrid: document.getElementById('guessGrid'),
-    filterTypeGrid: document.getElementById('filterTypeGrid'),
-    hudSecretImg: document.getElementById('hudSecretImg'),
-    hudSecretName: document.getElementById('hudSecretName'),
-    winnerTitle: document.getElementById('winnerTitle'),
-    winnerSubtitle: document.getElementById('winnerSubtitle'),
-    winnerRevealImg: document.getElementById('winnerRevealImg'),
-    winnerRevealName: document.getElementById('winnerRevealName'),
-    uiModalTitle: document.getElementById('uiModalTitle'),
-    uiModalText: document.getElementById('uiModalText'),
-    uiModalConfirm: document.getElementById('uiModalConfirm'),
-    uiModalCancel: document.getElementById('uiModalCancel'),
-    guessBtn: document.getElementById('guessBtn'),
-    askTypesBtn: document.getElementById('askTypesBtn'),
-    visibilityBtn: document.getElementById('visibilityBtn'),
-    themeIcon: document.getElementById('themeIcon'),
+    // Modales
+    get guessModal() { return document.getElementById('guessModal'); },
+    get winnerModal() { return document.getElementById('winnerModal'); },
+    get filterModal() { return document.getElementById('filterModal'); },
+    get uiModal() { return document.getElementById('uiModal'); },
     
-    // Overlays para cerrar modales
-    guessModalOverlay: document.getElementById('guessModalOverlay'),
-    filterModalOverlay: document.getElementById('filterModalOverlay'),
-    uiModalOverlay: document.getElementById('uiModalOverlay')
+    // Elementos internos con IDs corregidos
+    get btnOnline() { return document.getElementById('btn-mode-online'); }, // Corregido
+    get connectionStatus() { return document.getElementById('connectionStatus'); },
+    get waitingCode() { return document.getElementById('waitingCode'); },
+    get joinCodeInput() { return document.getElementById('joinCodeInput'); },
+    get roomCodeDisplay() { return document.getElementById('roomCodeDisplay'); },
+    get turnStatus() { return document.getElementById('turnStatus'); },
+    
+    // Grids
+    get selectionGrid() { return document.getElementById('selectionGrid'); },
+    get mainGrid() { return document.getElementById('mainGrid'); },
+    get guessGrid() { return document.getElementById('guessGrid'); },
+    get filterTypeGrid() { return document.getElementById('filterTypeGrid'); },
+    
+    // HUD y Textos
+    get hudSecretImg() { return document.getElementById('hudSecretImg'); },
+    get hudSecretName() { return document.getElementById('hudSecretName'); },
+    get winnerTitle() { return document.getElementById('winnerTitle'); },
+    get winnerSubtitle() { return document.getElementById('winnerSubtitle'); },
+    get winnerRevealImg() { return document.getElementById('winnerRevealImg'); },
+    get winnerRevealName() { return document.getElementById('winnerRevealName'); },
+    
+    // UI Modal Elementos
+    get uiModalTitle() { return document.getElementById('uiModalTitle'); },
+    get uiModalText() { return document.getElementById('uiModalText'); },
+    get uiModalConfirm() { return document.getElementById('uiModalConfirm'); },
+    get uiModalCancel() { return document.getElementById('uiModalCancel'); },
+    
+    // Botones de acción
+    get guessBtn() { return document.getElementById('btn-open-guess'); }, // Corregido
+    get askTypesBtn() { return document.getElementById('askTypesBtn'); },
+    get visibilityBtn() { return document.getElementById('btn-visibility'); }, // Corregido
+    get themeIcon() { return document.getElementById('themeIcon'); },
+    
+    // Overlays
+    get guessModalOverlay() { return document.getElementById('guessModalOverlay'); },
+    get filterModalOverlay() { return document.getElementById('filterModalOverlay'); },
+    get uiModalOverlay() { return document.getElementById('uiModalOverlay'); }
 };
 
 export const UI = {
     elements: DOM,
     
     showLoading: (show) => {
+        if (!DOM.loadingScreen) return;
         if(show) DOM.loadingScreen.classList.remove('hidden');
         else DOM.loadingScreen.classList.add('hidden');
     },
 
     setConnectionStatus: (connected) => {
+        if (!DOM.btnOnline) return;
         if (connected) {
             DOM.btnOnline.classList.remove('opacity-50', 'cursor-not-allowed');
             DOM.connectionStatus.textContent = "● Conectado";
@@ -71,15 +85,15 @@ export const UI = {
         DOM.uiModalText.textContent = text;
         DOM.uiModal.classList.remove('hidden');
         
-        // Clonar para limpiar eventos
-        const newConfirm = DOM.uiModalConfirm.cloneNode(true);
-        const newCancel = DOM.uiModalCancel.cloneNode(true);
-        DOM.uiModalConfirm.parentNode.replaceChild(newConfirm, DOM.uiModalConfirm);
-        DOM.uiModalCancel.parentNode.replaceChild(newCancel, DOM.uiModalCancel);
+        // Clonar para limpiar eventos previos
+        const oldConfirm = DOM.uiModalConfirm;
+        const oldCancel = DOM.uiModalCancel;
         
-        // Actualizar referencias en DOM cache
-        DOM.uiModalConfirm = newConfirm;
-        DOM.uiModalCancel = newCancel;
+        const newConfirm = oldConfirm.cloneNode(true);
+        const newCancel = oldCancel.cloneNode(true);
+        
+        oldConfirm.parentNode.replaceChild(newConfirm, oldConfirm);
+        oldCancel.parentNode.replaceChild(newCancel, oldCancel);
 
         if (isAlert) {
             newCancel.classList.add('hidden');
@@ -102,6 +116,7 @@ export const UI = {
     closeModal: () => DOM.uiModal.classList.add('hidden'),
 
     renderGrid: (container, list, onClick, eliminatedSet = new Set()) => {
+        if (!container) return;
         container.innerHTML = '';
         list.forEach(poke => {
             const isEliminated = eliminatedSet.has(poke.id);
@@ -143,6 +158,7 @@ export const UI = {
     },
 
     updateVisibilityBtn: () => {
+        if (!DOM.visibilityBtn) return;
         if (gameState.hideEliminated) {
             DOM.visibilityBtn.classList.add('bg-blue-100', 'text-blue-600', 'dark:bg-blue-900/50', 'dark:text-blue-300');
         } else {
@@ -151,6 +167,7 @@ export const UI = {
     },
 
     updateFilterButton: (count) => {
+        if (!DOM.askTypesBtn) return;
         if (count > 0) {
             DOM.askTypesBtn.disabled = false;
             DOM.askTypesBtn.classList.remove('bg-slate-300', 'cursor-not-allowed', 'dark:bg-slate-700');
@@ -177,7 +194,7 @@ export const UI = {
 
     updateThemeIcon: () => {
         const isDark = document.documentElement.classList.contains('dark');
-        DOM.themeIcon.textContent = isDark ? '☀️' : '🌙';
+        if (DOM.themeIcon) DOM.themeIcon.textContent = isDark ? '☀️' : '🌙';
     },
 
     initTheme: () => {
@@ -201,7 +218,9 @@ export const UI = {
         DOM.roomCodeDisplay.classList.add('hidden');
         
         DOM.modeScreen.classList.remove('hidden');
-        DOM.visibilityBtn.classList.remove('bg-blue-100', 'text-blue-600', 'dark:bg-blue-900/50', 'dark:text-blue-300');
-        DOM.guessBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        
+        // Limpiar estilos de botones si existen
+        if (DOM.visibilityBtn) DOM.visibilityBtn.classList.remove('bg-blue-100', 'text-blue-600', 'dark:bg-blue-900/50', 'dark:text-blue-300');
+        if (DOM.guessBtn) DOM.guessBtn.classList.remove('opacity-50', 'cursor-not-allowed');
     }
 };
