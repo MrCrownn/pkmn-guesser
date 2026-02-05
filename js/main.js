@@ -28,38 +28,31 @@ window.onload = async () => {
         console.error(e);
     }
 };
+// Event Listeners (attach safely)
+function onId(id, event, handler) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener(event, handler);
+}
 
-// Event Listeners
-document.getElementById('btn-header-reset').addEventListener('click', () => {
-    UI.showModal('¿Volver al Lobby?', 'Se perderá el progreso actual.', () => Game.resetGame());
-});
+onId('btn-header-reset', 'click', () => UI.showModal('¿Volver al Lobby?', 'Se perderá el progreso actual.', () => Game.resetGame()));
+onId('resetGameBtn', 'click', () => UI.showModal('¿Salir?', 'Volverás a la selección de sala.', () => Game.resetGame()));
+onId('themeToggleBtn', 'click', UI.updateTheme);
 
-document.getElementById('resetGameBtn').addEventListener('click', () => {
-    UI.showModal('¿Salir?', 'Volverás a la selección de sala.', () => Game.resetGame());
-});
+onId('btn-mode-local', 'click', () => Game.selectMode('local'));
+onId('btn-mode-online', 'click', () => Game.selectMode('online'));
 
-document.getElementById('themeToggleBtn').addEventListener('click', UI.updateTheme);
-
-// Mode Selection
-document.getElementById('btn-mode-local').addEventListener('click', () => Game.selectMode('local'));
-document.getElementById('btn-mode-online').addEventListener('click', () => Game.selectMode('online'));
-
-// Lobby
-document.getElementById('btn-create-room').addEventListener('click', () => {
+onId('btn-create-room', 'click', () => {
     if (!auth.currentUser) return UI.showModal("Error", "No estás conectado.", null, true);
     gameState.online.role = 'host';
-    UI.elements.lobbyScreen.classList.add('hidden');
-    UI.elements.setupScreen.classList.remove('hidden');
+    if (UI.elements.lobbyScreen) UI.elements.lobbyScreen.classList.add('hidden');
+    if (UI.elements.setupScreen) UI.elements.setupScreen.classList.remove('hidden');
 });
 
-document.getElementById('btn-join-room').addEventListener('click', () => {
-    Game.joinGame(null); 
-});
+onId('btn-join-room', 'click', () => Game.joinGame(null));
+onId('btn-lobby-back', 'click', Game.resetGame);
 
-document.getElementById('btn-lobby-back').addEventListener('click', Game.resetGame);
-
-// Region Selection
-document.getElementById('region-buttons-container').addEventListener('click', (e) => {
+const regionContainer = document.getElementById('region-buttons-container');
+if (regionContainer) regionContainer.addEventListener('click', (e) => {
     if(e.target.classList.contains('region-btn')) {
         const ranges = {
             kanto: [1, 151], johto: [152, 251], hoenn: [252, 386], sinnoh: [387, 493],
@@ -72,28 +65,20 @@ document.getElementById('region-buttons-container').addEventListener('click', (e
     }
 });
 
-// Waiting Room
-document.getElementById('btn-copy-code').addEventListener('click', () => {
+onId('btn-copy-code', 'click', () => {
     const url = `${window.location.origin}${window.location.pathname}#game=${gameState.online.gameId}`;
-    navigator.clipboard.writeText(url); 
+    navigator.clipboard.writeText(url);
     UI.showModal("Copiado", "Enlace copiado al portapapeles", null, true);
 });
 
-// Interstitial (Local)
-document.getElementById('btn-local-next-turn').addEventListener('click', () => {
-    UI.elements.interstitialScreen.classList.add('hidden');
-    Game.renderLocalBoard();
-});
+onId('btn-local-next-turn', 'click', () => { if (UI.elements.interstitialScreen) UI.elements.interstitialScreen.classList.add('hidden'); Game.renderLocalBoard(); });
 
-// Game Board Actions
-document.getElementById('btn-open-filter').addEventListener('click', () => {
+onId('btn-open-filter', 'click', () => {
     gameState.selectedFilters.clear();
-    const types = Object.keys(typeTranslations); 
-    UI.elements.filterTypeGrid.innerHTML = '';
-    
+    const types = Object.keys(typeTranslations);
+    if (UI.elements.filterTypeGrid) UI.elements.filterTypeGrid.innerHTML = '';
     types.forEach(t => {
         const btn = document.createElement('button');
-        // Estilo corregido: texto blanco y opacidad para feedback visual
         btn.className = `p-2 rounded-xl font-bold text-white uppercase text-[10px] shadow-sm type-badge border-2 border-transparent t-${t} opacity-80 hover:opacity-100 transition flex items-center justify-center h-10`;
         btn.textContent = typeTranslations[t] || t;
         btn.onclick = () => {
@@ -112,21 +97,17 @@ document.getElementById('btn-open-filter').addEventListener('click', () => {
             }
             UI.updateFilterButton(gameState.selectedFilters.size);
         };
-        UI.elements.filterTypeGrid.appendChild(btn);
+        if (UI.elements.filterTypeGrid) UI.elements.filterTypeGrid.appendChild(btn);
     });
-    
     UI.updateFilterButton(0);
-    UI.elements.filterModal.classList.remove('hidden');
+    if (UI.elements.filterModal) UI.elements.filterModal.classList.remove('hidden');
 });
 
-document.getElementById('btn-visibility').addEventListener('click', () => {
-    Game.toggleVisibility();
-});
+onId('btn-visibility', 'click', () => { if (Game.toggleVisibility) Game.toggleVisibility(); });
 
-document.getElementById('btn-open-guess').addEventListener('click', () => {
+onId('btn-open-guess', 'click', () => {
     if (gameState.hasGuessedThisTurn) return UI.showModal("Espera", "Solo puedes arriesgar 1 vez por turno.", null, true);
-    
-    let eliminated;
+    let eliminated = new Set();
     if (gameState.mode === 'local') {
         const p = gameState.local.turn;
         eliminated = p === 1 ? gameState.local.p1.eliminated : gameState.local.p2.eliminated;
@@ -135,12 +116,11 @@ document.getElementById('btn-open-guess').addEventListener('click', () => {
         eliminated = new Set(gameState.online.data[myRole].eliminated || []);
     }
     const candidates = gameState.pokemonList.filter(pk => !eliminated.has(pk.id));
-    
     UI.renderGrid(UI.elements.guessGrid, candidates, (poke) => Game.makeGuess(poke));
-    UI.elements.guessModal.classList.remove('hidden');
+    if (UI.elements.guessModal) UI.elements.guessModal.classList.remove('hidden');
 });
 
-document.getElementById('btn-end-turn').addEventListener('click', Game.handleEndTurn);
+onId('btn-end-turn', 'click', Game.handleEndTurn);
 
 // Modals
 const btnCloseGuess = document.getElementById('btn-close-guess');
@@ -162,7 +142,7 @@ const uiModalCancelBtn = document.getElementById('uiModalCancel');
 if (uiModalCancelBtn) uiModalCancelBtn.addEventListener('click', UI.closeModal);
 
 // Lógica de Filtros (SÍ/NO) corregida sin setTimeout
-document.getElementById('askTypesBtn').addEventListener('click', () => {
+onId('askTypesBtn', 'click', () => {
     const types = Array.from(gameState.selectedFilters);
     UI.elements.filterModal.classList.add('hidden');
     
@@ -195,8 +175,8 @@ document.getElementById('askTypesBtn').addEventListener('click', () => {
     }
 });
 
-document.getElementById('btn-filter-single').addEventListener('click', () => triggerFilterStruct('single', "¿Tiene UN solo tipo?"));
-document.getElementById('btn-filter-dual').addEventListener('click', () => triggerFilterStruct('dual', "¿Tiene DOS tipos?"));
+onId('btn-filter-single', 'click', () => triggerFilterStruct('single', "¿Tiene UN solo tipo?"));
+onId('btn-filter-dual', 'click', () => triggerFilterStruct('dual', "¿Tiene DOS tipos?"));
 
 function triggerFilterStruct(type, text) {
     UI.elements.filterModal.classList.add('hidden');
@@ -225,5 +205,8 @@ function triggerFilterStruct(type, text) {
 }
 
 // Winner Modal
-document.getElementById('btn-rematch').addEventListener('click', Game.triggerRematch);
-document.getElementById('btn-back-lobby').addEventListener('click', Game.resetGame);
+onId('btn-rematch', 'click', Game.triggerRematch);
+onId('btn-back-lobby', 'click', Game.resetGame);
+
+// Ensure initial visible view in case other scripts fail
+if (UI && UI.resetViews) UI.resetViews();
