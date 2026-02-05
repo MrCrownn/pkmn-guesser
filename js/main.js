@@ -1,7 +1,7 @@
 import { auth, signInAnonymously, onAuthStateChanged } from './firebase.js';
 import { gameState } from './state.js';
 import { Game } from './game.js';
-import { UI } from './ui.js';
+import { UI, typeTranslations } from './ui.js';
 
 // Init
 window.onload = async () => {
@@ -53,7 +53,7 @@ document.getElementById('btn-create-room').addEventListener('click', () => {
 });
 
 document.getElementById('btn-join-room').addEventListener('click', () => {
-    Game.joinGame(null); // Will take input value
+    Game.joinGame(null); 
 });
 
 document.getElementById('btn-lobby-back').addEventListener('click', Game.resetGame);
@@ -88,15 +88,12 @@ document.getElementById('btn-local-next-turn').addEventListener('click', () => {
 // Game Board Actions
 document.getElementById('btn-open-filter').addEventListener('click', () => {
     gameState.selectedFilters.clear();
-    const types = ["normal", "fire", "water", "grass", "electric", "ice", "fighting", "poison", "ground", "flying", "psychic", "bug", "rock", "ghost", "dragon", "steel", "fairy"];
+    const types = Object.keys(typeTranslations); 
     UI.elements.filterTypeGrid.innerHTML = '';
     
-    const typeTranslations = {
-        normal: "Normal", fire: "Fuego", water: "Agua", grass: "Planta", electric: "Eléctrico", ice: "Hielo", fighting: "Lucha", poison: "Veneno", ground: "Tierra", flying: "Volador", psychic: "Psíquico", bug: "Bicho", rock: "Roca", ghost: "Fantasma", dragon: "Dragón", steel: "Acero", fairy: "Hada"
-    };
-
     types.forEach(t => {
         const btn = document.createElement('button');
+        // Estilo corregido: texto blanco y opacidad para feedback visual
         btn.className = `p-2 rounded-xl font-bold text-white uppercase text-[10px] shadow-sm type-badge border-2 border-transparent t-${t} opacity-80 hover:opacity-100 transition flex items-center justify-center h-10`;
         btn.textContent = typeTranslations[t] || t;
         btn.onclick = () => {
@@ -105,9 +102,8 @@ document.getElementById('btn-open-filter').addEventListener('click', () => {
                 btn.classList.remove('filter-selected');
                 btn.classList.add('opacity-80');
             } else {
-                if (gameState.selectedFilters.size >= 2)
-                {
-                    UI.showModal("Límite alcanzado", "Solo puedes seleccionar hasta 2 tipos.", null, true);
+                if (gameState.selectedFilters.size >= 2) {
+                    UI.showModal("Límite Alcanzado", "Solo puedes seleccionar hasta 2 tipos.", null, true);
                     return;
                 }
                 gameState.selectedFilters.add(t);
@@ -124,15 +120,12 @@ document.getElementById('btn-open-filter').addEventListener('click', () => {
 });
 
 document.getElementById('btn-visibility').addEventListener('click', () => {
-    gameState.hideEliminated = !gameState.hideEliminated;
-    UI.updateVisibilityBtn();
-    UI.toggleEliminatedVisibility(); // Re-render
+    Game.toggleVisibility();
 });
 
 document.getElementById('btn-open-guess').addEventListener('click', () => {
     if (gameState.hasGuessedThisTurn) return UI.showModal("Espera", "Solo puedes arriesgar 1 vez por turno.", null, true);
     
-    // Filter candidates
     let eliminated;
     if (gameState.mode === 'local') {
         const p = gameState.local.turn;
@@ -159,32 +152,38 @@ document.getElementById('filterModalOverlay').addEventListener('click', () => UI
 document.getElementById('uiModalOverlay').addEventListener('click', UI.closeModal);
 document.getElementById('uiModalCancel').addEventListener('click', UI.closeModal);
 
+// Lógica de Filtros (SÍ/NO) corregida sin setTimeout
 document.getElementById('askTypesBtn').addEventListener('click', () => {
     const types = Array.from(gameState.selectedFilters);
     UI.elements.filterModal.classList.add('hidden');
     
-    // Construct question text
-    const typeTranslations = {
-        normal: "Normal", fire: "Fuego", water: "Agua", grass: "Planta", electric: "Eléctrico", ice: "Hielo", fighting: "Lucha", poison: "Veneno", ground: "Tierra", flying: "Volador", psychic: "Psíquico", bug: "Bicho", rock: "Roca", ghost: "Fantasma", dragon: "Dragón", steel: "Acero", fairy: "Hada"
-    };
     const translatedTypes = types.map(t => typeTranslations[t] || t);
     let questionText = translatedTypes.length === 1 ? `¿Es tipo ${translatedTypes[0]}?` : `¿Es tipo ${translatedTypes.join(' o ')}?`;
 
+    // 1. Abrimos el modal base con la acción afirmativa
     UI.showModal("¿Qué respondió tu rival?", questionText, () => {
         Game.applyFilter(types, true, true);
     });
-    // Swap buttons hack for Yes/No
-    setTimeout(() => {
-        const cancelBtn = document.getElementById('uiModalCancel');
+    
+    // 2. Modificamos los botones INMEDIATAMENTE (sin setTimeout) para convertirlos en SÍ/NO
+    const cancelBtn = document.getElementById('uiModalCancel');
+    const confirmBtn = document.getElementById('uiModalConfirm');
+
+    if (cancelBtn && confirmBtn) {
         cancelBtn.textContent = "Dijo NO";
+        // Aseguramos estilo visible y consistente
+        cancelBtn.className = "flex-1 py-3 rounded-xl font-bold text-slate-500 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all";
         cancelBtn.classList.remove('hidden');
+        
+        // Sobrescribimos el comportamiento de cancelar para que sea "Dijo NO"
         cancelBtn.onclick = () => {
             UI.elements.uiModal.classList.add('hidden');
             Game.applyFilter(types, true, false);
         };
-        const confirmBtn = document.getElementById('uiModalConfirm');
+
         confirmBtn.textContent = "Dijo SÍ";
-    }, 50);
+        confirmBtn.className = "flex-1 py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all";
+    }
 });
 
 document.getElementById('btn-filter-single').addEventListener('click', () => triggerFilterStruct('single', "¿Tiene UN solo tipo?"));
@@ -192,20 +191,28 @@ document.getElementById('btn-filter-dual').addEventListener('click', () => trigg
 
 function triggerFilterStruct(type, text) {
     UI.elements.filterModal.classList.add('hidden');
+    
     UI.showModal("¿Qué respondió tu rival?", text, () => {
         Game.applyFilter([type], false, true);
     });
-    setTimeout(() => {
-        const cancelBtn = document.getElementById('uiModalCancel');
+
+    // Modificación inmediata síncrona
+    const cancelBtn = document.getElementById('uiModalCancel');
+    const confirmBtn = document.getElementById('uiModalConfirm');
+
+    if (cancelBtn && confirmBtn) {
         cancelBtn.textContent = "Dijo NO";
+        cancelBtn.className = "flex-1 py-3 rounded-xl font-bold text-slate-500 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all";
         cancelBtn.classList.remove('hidden');
+        
         cancelBtn.onclick = () => {
             UI.elements.uiModal.classList.add('hidden');
             Game.applyFilter([type], false, false);
         };
-        const confirmBtn = document.getElementById('uiModalConfirm');
+
         confirmBtn.textContent = "Dijo SÍ";
-    }, 50);
+        confirmBtn.className = "flex-1 py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all";
+    }
 }
 
 // Winner Modal
