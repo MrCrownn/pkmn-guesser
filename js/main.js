@@ -105,6 +105,11 @@ document.getElementById('btn-open-filter').addEventListener('click', () => {
                 btn.classList.remove('filter-selected');
                 btn.classList.add('opacity-80');
             } else {
+                if (gameState.selectedFilters.size >= 2)
+                {
+                    UI.showModal("Límite alcanzado", "Solo puedes seleccionar hasta 2 tipos.", null, true);
+                    return;
+                }
                 gameState.selectedFilters.add(t);
                 btn.classList.add('filter-selected');
                 btn.classList.remove('opacity-80');
