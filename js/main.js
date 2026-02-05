@@ -143,14 +143,23 @@ document.getElementById('btn-open-guess').addEventListener('click', () => {
 document.getElementById('btn-end-turn').addEventListener('click', Game.handleEndTurn);
 
 // Modals
-document.getElementById('btn-close-guess').addEventListener('click', () => UI.elements.guessModal.classList.add('hidden'));
-document.getElementById('guessModalOverlay').addEventListener('click', () => UI.elements.guessModal.classList.add('hidden'));
+const btnCloseGuess = document.getElementById('btn-close-guess');
+if (btnCloseGuess) btnCloseGuess.addEventListener('click', () => UI.elements.guessModal.classList.add('hidden'));
 
-document.getElementById('btn-close-filter').addEventListener('click', () => UI.elements.filterModal.classList.add('hidden'));
-document.getElementById('filterModalOverlay').addEventListener('click', () => UI.elements.filterModal.classList.add('hidden'));
+const guessModalOverlay = document.getElementById('guessModalOverlay');
+if (guessModalOverlay) guessModalOverlay.addEventListener('click', () => UI.elements.guessModal.classList.add('hidden'));
 
-document.getElementById('uiModalOverlay').addEventListener('click', UI.closeModal);
-document.getElementById('uiModalCancel').addEventListener('click', UI.closeModal);
+const btnCloseFilter = document.getElementById('btn-close-filter');
+if (btnCloseFilter) btnCloseFilter.addEventListener('click', () => UI.elements.filterModal.classList.add('hidden'));
+
+const filterModalOverlay = document.getElementById('filterModalOverlay');
+if (filterModalOverlay) filterModalOverlay.addEventListener('click', () => UI.elements.filterModal.classList.add('hidden'));
+
+const uiModalOverlay = document.getElementById('uiModalOverlay');
+if (uiModalOverlay) uiModalOverlay.addEventListener('click', UI.closeModal);
+
+const uiModalCancelBtn = document.getElementById('uiModalCancel');
+if (uiModalCancelBtn) uiModalCancelBtn.addEventListener('click', UI.closeModal);
 
 // Lógica de Filtros (SÍ/NO) corregida sin setTimeout
 document.getElementById('askTypesBtn').addEventListener('click', () => {
