@@ -124,3 +124,50 @@ html.dark .custom-scroll::-webkit-scrollbar-thumb { background-color: #475569; }
 
 /* Make winner reveal image contained */
 .modal-content img { object-fit: contain; }
+
+/* Modal and button base styles */
+:root {
+    --poke-yellow: #F7D02C;
+    --poke-dark: #1F2937;
+    --poke-blue: #3B82F6;
+    --poke-red: #FF5350;
+}
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(2,6,23,0.6);
+    z-index: 90;
+}
+.modal-overlay:not(.hidden) { display: flex; }
+
+.modal-backdrop {
+    position: absolute; inset: 0; cursor: pointer;
+}
+
+.modal-content {
+    position: relative;
+    background: var(--color-white, #fff);
+    padding: 16px;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(2,6,23,0.6);
+    z-index: 100;
+    max-width: 720px;
+    width: calc(100% - 48px);
+}
+
+.btn-primary {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0.6rem 1rem; border-radius: 10px; font-weight: 700;
+    background: var(--poke-blue); color: white; cursor: pointer; border: none;
+}
+.btn-secondary {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0.5rem 0.8rem; border-radius: 10px; font-weight: 700;
+    background: transparent; color: var(--poke-blue); border: 1px solid rgba(59,130,246,0.12); cursor: pointer;
+}
+
+.hidden { display: none !important; }
