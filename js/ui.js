@@ -1,4 +1,3 @@
-
 import { gameState } from './state.js';
 
 export const typeTranslations = {
@@ -7,7 +6,6 @@ export const typeTranslations = {
     ground: "Tierra", flying: "Volador", psychic: "Psíquico", bug: "Bicho",
     rock: "Roca", ghost: "Fantasma", dragon: "Dragón", steel: "Acero", fairy: "Hada"
 };
-
 
 const DOM = {
     // Pantallas
@@ -88,39 +86,38 @@ export const UI = {
         }
     },
 
-   
     showModal: (title, text, onConfirm, isAlert = false) => {
         DOM.uiModalTitle.textContent = title;
         DOM.uiModalText.textContent = text;
         DOM.uiModal.classList.remove('hidden');
         
-        // Clonación para limpiar eventos
+        // Clonar para limpiar eventos previos
         const oldConfirm = DOM.uiModalConfirm;
         const oldCancel = DOM.uiModalCancel;
+        
         const newConfirm = oldConfirm.cloneNode(true);
         const newCancel = oldCancel.cloneNode(true);
+        
+        // Reemplazamos en el DOM. Como conservan el ID, los getters seguirán funcionando.
         oldConfirm.parentNode.replaceChild(newConfirm, oldConfirm);
         oldCancel.parentNode.replaceChild(newCancel, oldCancel);
-        
-        // Resetear textos y visibilidad
-        newConfirm.textContent = isAlert ? "OK" : "Confirmar";
-        newCancel.textContent = "Cancelar";
-        
-        // --- APLICAR CLASES CSS MANUALMENTE PARA ASEGURAR ESTILO ---
-        // Botón Confirmar (Azul)
-        newConfirm.className = "btn-primary flex-1"; // Usa la clase de styles.css
-        
-        // Botón Cancelar (Gris)
-        newCancel.className = "btn-secondary flex-1"; // Usa la clase de styles.css
 
         if (isAlert) {
-            newCancel.classList.add('hidden'); // Ocultar cancelar en alertas
+            newCancel.classList.add('hidden');
+            newConfirm.textContent = "OK";
+            newConfirm.className = "w-full py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all";
+            
             newConfirm.onclick = () => {
                  DOM.uiModal.classList.add('hidden');
                  if(onConfirm) onConfirm();
             };
         } else {
             newCancel.classList.remove('hidden');
+            newConfirm.textContent = "Confirmar";
+            // Estilos
+            newConfirm.className = "flex-1 py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all";
+            newCancel.className = "flex-1 py-3 rounded-xl font-bold text-slate-500 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all";
+
             newConfirm.onclick = () => {
                  DOM.uiModal.classList.add('hidden');
                  if(onConfirm) onConfirm();
@@ -139,24 +136,17 @@ export const UI = {
             if (gameState.hideEliminated && isEliminated) return;
 
             const div = document.createElement('div');
-            // Aplicar clases de CSS puro
-            div.className = `card ${isEliminated ? 'eliminated' : ''}`;
+            div.className = `card relative bg-white dark:bg-slate-800 rounded-xl p-1 shadow-sm border border-slate-100 dark:border-slate-700 ${isEliminated ? 'eliminated' : 'cursor-pointer hover:scale-105'}`;
+            div.classList.add(`t-${poke.types[0]}`, 'card-border');
             
-            // Añadir clase de color de tipo (ej: t-fire)
-            // IMPORTANTE: Aseguramos que el CSS tenga estos colores definidos
-            const typeClass = `t-${poke.types[0]}`;
-            div.classList.add(typeClass);
-            div.classList.add('card-border'); // Borde inferior de color
-
-            // Crear bolitas de tipos
             const typesHtml = poke.types.map(t => 
-                `<span class="type-badge t-${t}" title="${typeTranslations[t] || t}"></span>`
+                `<span class="inline-block w-4 h-4 rounded-full t-${t} type-badge border border-slate-100 dark:border-slate-700 shadow-sm" title="${typeTranslations[t] || t}"></span>`
             ).join('');
 
             div.innerHTML = `
-                <img src="${poke.image}" loading="lazy">
-                <div style="font-weight:bold; font-size:0.75rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 4px;">${poke.name}</div>
-                <div style="display:flex; justify-content:center; gap:4px; margin-top:4px;">${typesHtml}</div>
+                <img src="${poke.image}" class="w-full aspect-square object-contain bg-slate-50 dark:bg-slate-900 rounded-lg mb-1" loading="lazy">
+                <div class="text-center text-[10px] sm:text-xs font-bold truncate px-1 text-slate-700 dark:text-slate-200">${poke.name}</div>
+                <div class="flex justify-center gap-1 mt-1 pb-1">${typesHtml}</div>
             `;
             
             div.onclick = (e) => { e.stopPropagation(); onClick(poke); };
@@ -168,14 +158,12 @@ export const UI = {
         DOM.hudSecretImg.src = secret.image;
         DOM.hudSecretName.textContent = secret.name;
         DOM.turnStatus.textContent = isMyTurn ? "TU TURNO" : "ESPERANDO";
-        // Estilos directos para asegurar visibilidad
-        DOM.turnStatus.style.color = isMyTurn ? "var(--poke-blue)" : "gray";
-        DOM.turnStatus.style.fontWeight = "900";
+        DOM.turnStatus.className = isMyTurn ? "font-black text-sm text-poke-blue dark:text-blue-400 animate-pulse" : "font-bold text-sm text-slate-400 dark:text-slate-500";
     },
 
     showWinner: (isMeWinner, oppSecret) => {
         DOM.winnerTitle.textContent = isMeWinner ? "¡GANASTE!" : "DERROTA";
-        DOM.winnerTitle.style.color = isMeWinner ? "green" : "red";
+        DOM.winnerTitle.className = isMeWinner ? "text-4xl font-black mb-2 text-green-500" : "text-4xl font-black mb-2 text-red-500";
         DOM.winnerSubtitle.textContent = isMeWinner ? "¡Adivinaste correctamente!" : "Tu rival ganó la partida";
         DOM.winnerRevealImg.src = oppSecret.image;
         DOM.winnerRevealName.textContent = oppSecret.name;
@@ -184,13 +172,10 @@ export const UI = {
 
     updateVisibilityBtn: () => {
         if (!DOM.visibilityBtn) return;
-        // Cambiar estilo visual si está activo
         if (gameState.hideEliminated) {
-            DOM.visibilityBtn.style.backgroundColor = "#dbeafe"; // blue-100
-            DOM.visibilityBtn.style.color = "#2563eb"; // blue-600
+            DOM.visibilityBtn.classList.add('bg-blue-100', 'text-blue-600', 'dark:bg-blue-900/50', 'dark:text-blue-300');
         } else {
-            DOM.visibilityBtn.style.backgroundColor = ""; // reset
-            DOM.visibilityBtn.style.color = "";
+            DOM.visibilityBtn.classList.remove('bg-blue-100', 'text-blue-600', 'dark:bg-blue-900/50', 'dark:text-blue-300');
         }
     },
 
@@ -198,11 +183,13 @@ export const UI = {
         if (!DOM.askTypesBtn) return;
         if (count > 0) {
             DOM.askTypesBtn.disabled = false;
-            DOM.askTypesBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            DOM.askTypesBtn.classList.remove('bg-slate-300', 'cursor-not-allowed', 'dark:bg-slate-700');
+            DOM.askTypesBtn.classList.add('bg-blue-600', 'hover:bg-blue-700', 'shadow-lg');
             DOM.askTypesBtn.textContent = `Preguntar por ${count} Tipo${count > 1 ? 's' : ''}`;
         } else {
             DOM.askTypesBtn.disabled = true;
-            DOM.askTypesBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            DOM.askTypesBtn.classList.add('bg-slate-300', 'cursor-not-allowed', 'dark:bg-slate-700');
+            DOM.askTypesBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700', 'shadow-lg');
             DOM.askTypesBtn.textContent = "Selecciona tipos primero";
         }
     },
@@ -245,11 +232,7 @@ export const UI = {
         
         DOM.modeScreen.classList.remove('hidden');
         
-        // Resetear estilos manuales
-        if(DOM.visibilityBtn) {
-             DOM.visibilityBtn.style.backgroundColor = ""; 
-             DOM.visibilityBtn.style.color = "";
-        }
+        if (DOM.visibilityBtn) DOM.visibilityBtn.classList.remove('bg-blue-100', 'text-blue-600', 'dark:bg-blue-900/50', 'dark:text-blue-300');
         if (DOM.guessBtn) DOM.guessBtn.classList.remove('opacity-50', 'cursor-not-allowed');
     }
 };
