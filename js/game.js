@@ -11,7 +11,11 @@ export const Game = {
     // --- MODO LOCAL ---
     startLocalGame: (start, end) => {
         UI.showLoading(true);
-        UI.elements.setupScreen.classList.add('hidden');
+        gameState.mode = 'local';
+        
+        // Ocultar selector de región inmediatamente
+        const setupScreen = document.getElementById('setupScreen');
+        if(setupScreen) setupScreen.classList.add('hidden');
         
         loadPokemonData({start, end}, (list) => {
             gameState.pokemonList = list;
@@ -19,21 +23,38 @@ export const Game = {
             Game.startLocalSelection(1);
         }, (err) => {
             UI.showLoading(false);
-            UI.elements.setupScreen.classList.remove('hidden');
+            if(setupScreen) setupScreen.classList.remove('hidden');
             UI.showModal("Error", "Error al cargar datos de Pokémon", null, true);
         });
     },
 
-    // --- MODO ONLINE: Crear Sala ---
+    // --- MODO ONLINE ---
     createOnlineRoom: async () => {
-        if (!auth.currentUser) return UI.showModal("Error", "No conectado", null, true);
+        if (!auth.currentUser) return UI.showModal("Error", "No conectado a Firebase", null, true);
+        if (!appId) return UI.showModal("Error", "Configuración incompleta (AppID)", null, true);
         
         UI.showLoading(true);
+        
+        // 1. Generar código
         const code = Math.floor(100000 + Math.random() * 900000).toString();
         
-        // CORRECCIÓN IMPORTANTE: Actualizar la URL del Host también para no perder la sesión si recarga
-        history.pushState(null, null, `#game=${code}`);
+        // 2. Setear estado inmediatamente
+        gameState.mode = 'online';
+        gameState.online.gameId = code;
+        gameState.online.role = 'host';
         
+        // 3. Persistir en URL
+        history.pushState(null, null, `#game=${code}`);
+
+        // 4. Actualizar UI INMEDIATAMENTE (Optimistic UI)
+        // Mostramos el código antes de ir a la DB para evitar sensación de "colgado"
+        if (UI.elements.waitingCode) UI.elements.waitingCode.textContent = code;
+        if (UI.elements.roomCodeDisplay) {
+            UI.elements.roomCodeDisplay.textContent = `CODE: ${code}`;
+            UI.elements.roomCodeDisplay.classList.remove('hidden');
+        }
+
+        // 5. Preparar documento
         const gameDoc = {
             createdAt: new Date(),
             lastActivity: Date.now(),
@@ -48,20 +69,33 @@ export const Game = {
         };
         
         try {
+            // 6. Escribir en DB
             await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', code), gameDoc);
-            // Ya no seteamos el rol manual aquí, dejamos que joinGame lo maneje para ser consistentes
-            Game.joinGame(code); 
-        } catch (e) {
+            
+            // 7. Transición de Pantalla final
             UI.showLoading(false);
-            UI.showModal("Error", "No se pudo crear la sala", null, true);
+            UI.elements.lobbyScreen.classList.add('hidden');
+            UI.elements.waitingScreen.classList.remove('hidden');
+            
+            // 8. Suscribirse
+            Game.subscribeToGame(code);
+        } catch (e) {
+            console.error("Error creating room:", e);
+            UI.showLoading(false);
+            UI.showModal("Error", "No se pudo crear la sala en la nube.", () => Game.resetGame(), true);
         }
     },
 
-    // --- MODO ONLINE: Unirse/Reconectar ---
     joinGame: async (code) => {
+        if (!code) return UI.showModal("Error", "Código inválido", null, true);
+        
         UI.elements.lobbyScreen.classList.add('hidden');
         UI.showLoading(true);
         
+        gameState.mode = 'online';
+        gameState.online.gameId = code;
+        history.pushState(null, null, `#game=${code}`);
+
         try {
             const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', code);
             const snap = await getDoc(gameRef);
@@ -73,51 +107,49 @@ export const Game = {
             }
             
             let data = snap.data();
-            const uid = auth.currentUser.uid;
-            
-            // 1. DETECCIÓN ROBUSTA DE ROL
-            // Si soy el hostId, soy Host. Si soy player2, soy Guest. Si no, intento ser Guest.
-            if (data.hostId === uid) {
+            const now = Date.now();
+            const lastActivity = data.lastActivity || 0;
+
+            if ((now - lastActivity) > SESSION_TIMEOUT) {
+                // Sala caducada -> Reciclar
+                const recycledDoc = {
+                    createdAt: new Date(),
+                    lastActivity: now,
+                    hostId: auth.currentUser.uid,
+                    region: null,
+                    status: 'waiting_for_guest',
+                    turn: auth.currentUser.uid,
+                    winner: null,
+                    interaction: null,
+                    player1: { id: auth.currentUser.uid, secret: null, eliminated: [] },
+                    player2: { id: null, secret: null, eliminated: [] }
+                };
+                await setDoc(gameRef, recycledDoc);
                 gameState.online.role = 'host';
-            } else if (data.player2.id === uid) {
-                gameState.online.role = 'guest';
-            } else if (!data.player2.id) {
-                // Hueco libre, lo tomo
-                gameState.online.role = 'guest';
-                await updateDoc(gameRef, { 
-                    'player2.id': uid, 
-                    status: 'selecting_region', 
-                    lastActivity: Date.now() 
-                });
-            } else {
-                // Sala llena y no soy ninguno de los dos
-                // Chequeo de expiración (Reciclaje de sala)
-                const now = Date.now();
-                if ((now - (data.lastActivity || 0)) > SESSION_TIMEOUT) {
-                    // Reciclar sala
-                    const recycledDoc = {
-                        createdAt: new Date(), lastActivity: now, hostId: uid, region: null, status: 'waiting_for_guest',
-                        turn: uid, winner: null, interaction: null,
-                        player1: { id: uid, secret: null, eliminated: [] }, player2: { id: null, secret: null, eliminated: [] }
-                    };
-                    await setDoc(gameRef, recycledDoc);
-                    gameState.online.role = 'host';
-                    // Continuamos al subscribe...
-                } else {
-                    UI.showLoading(false);
-                    UI.elements.lobbyScreen.classList.remove('hidden');
-                    return UI.showModal("Error", "La sala está llena", null, true);
-                }
+                
+                UI.showLoading(false);
+                UI.elements.waitingCode.textContent = code;
+                UI.elements.roomCodeDisplay.textContent = `CODE: ${code}`;
+                UI.elements.roomCodeDisplay.classList.remove('hidden');
+                UI.elements.waitingScreen.classList.remove('hidden');
+                Game.subscribeToGame(code);
+                return;
+            }
+
+            if (data.player2.id && data.player2.id !== auth.currentUser.uid) {
+                UI.showLoading(false);
+                UI.elements.lobbyScreen.classList.remove('hidden');
+                return UI.showModal("Error", "La sala está llena", null, true);
             }
             
-            gameState.online.gameId = code;
+            gameState.online.role = 'guest';
             
-            // Mostrar código en pantalla
-            UI.elements.waitingCode.textContent = code;
-            UI.elements.roomCodeDisplay.textContent = `CODE: ${code}`;
-            UI.elements.roomCodeDisplay.classList.remove('hidden');
-
-            // Cargar datos si la partida ya estaba en curso (Reconexión)
+            if (!data.player2.id) {
+                await updateDoc(gameRef, { 'player2.id': auth.currentUser.uid, status: 'selecting_region', lastActivity: Date.now() });
+            } else {
+                 await updateDoc(gameRef, { lastActivity: Date.now() });
+            }
+            
             if (data.region) {
                  loadPokemonData(data.region, (list) => {
                     gameState.pokemonList = list;
@@ -126,49 +158,67 @@ export const Game = {
             } else {
                 Game.subscribeToGame(code);
             }
-            
         } catch (err) {
-            console.error(err);
+            console.error("Error joining:", err);
             UI.showLoading(false);
             UI.elements.lobbyScreen.classList.remove('hidden');
-            UI.showModal("Error", "Error al unirse", null, true);
+            UI.showModal("Error", "Error de conexión al unirse", null, true);
         }
     },
 
     setOnlineRegion: async (start, end, regionName) => {
+        // --- PROTECCIÓN CONTRA ID NULO ---
+        let targetId = gameState.online.gameId;
+        
+        // Intento de recuperación
+        if (!targetId) {
+            const hash = window.location.hash;
+            if (hash && hash.includes('game=')) {
+                targetId = hash.split('game=')[1];
+                gameState.online.gameId = targetId;
+                gameState.mode = 'online';
+            }
+        }
+
+        if (!targetId) {
+            console.error("Game ID perdido. Estado:", gameState);
+            return UI.showModal("Error Crítico", "Se perdió la conexión con la sala. Recarga la página.", () => location.reload(), true);
+        }
+        
+        if (!appId) return UI.showModal("Error", "AppID no configurado", null, true);
+
         UI.showLoading(true);
         try {
-            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), {
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', targetId), {
                 region: { start, end, name: regionName },
                 status: 'selecting_pokemon',
                 lastActivity: Date.now()
             });
         } catch (e) {
+            console.error("Error setting region:", e);
             UI.showLoading(false);
-            UI.showModal("Error", "No se pudo establecer la región", null, true);
+            UI.showModal("Error", "No se pudo guardar la región.", null, true);
         }
     },
 
     sendQuestion: async (criteria, isType) => {
+        if (!gameState.online.gameId) return;
         try {
             UI.showLoading(true);
             await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), {
                 interaction: {
-                    type: 'question',
-                    criteria: criteria,
-                    isType: isType,
-                    status: 'waiting_response',
-                    asker: auth.currentUser.uid
+                    type: 'question', criteria, isType, status: 'waiting_response', asker: auth.currentUser.uid
                 },
                 lastActivity: Date.now()
             });
         } catch (e) {
             UI.showLoading(false);
-            UI.showModal("Error", "No se pudo enviar la pregunta", null, true);
+            UI.showModal("Error", "Fallo al enviar pregunta", null, true);
         }
     },
 
     answerQuestion: async (response) => {
+        if (!gameState.online.gameId) return;
         try {
             await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), {
                 "interaction.status": 'answered',
@@ -176,7 +226,7 @@ export const Game = {
                 lastActivity: Date.now()
             });
         } catch (e) {
-            UI.showModal("Error", "No se pudo enviar respuesta", null, true);
+            UI.showModal("Error", "Fallo al responder", null, true);
         }
     },
 
@@ -186,10 +236,10 @@ export const Game = {
             const data = docSnap.data();
             gameState.online.data = data;
             
-            // Asegurarnos que el rol esté definido, por si acaso
+            // Asignar rol si se perdió (por recarga)
             if (!gameState.online.role) {
                 if (data.hostId === auth.currentUser.uid) gameState.online.role = 'host';
-                else if (data.player2.id === auth.currentUser.uid) gameState.online.role = 'guest';
+                else if (data.player2 && data.player2.id === auth.currentUser.uid) gameState.online.role = 'guest';
             }
 
             const myRole = gameState.online.role === 'host' ? 'player1' : 'player2';
@@ -202,8 +252,7 @@ export const Game = {
             }
             if (interaction && interaction.status === 'answered' && interaction.asker === auth.currentUser.uid) {
                 UI.showLoading(false);
-                
-                // Lógica local antes de enviar a DB para evitar parpadeo
+                // Calcular y enviar todo junto para evitar parpadeos
                 let toEliminate = [];
                 gameState.pokemonList.forEach(p => {
                     let match = false;
@@ -228,6 +277,7 @@ export const Game = {
                 });
                 return;
             }
+            
             if (interaction && interaction.status === 'waiting_response' && interaction.asker === auth.currentUser.uid) {
                 UI.showLoading(true);
             } else if (!interaction && data.status === 'playing') {
@@ -249,6 +299,9 @@ export const Game = {
                 return;
             }
             if (data.status === 'selecting_pokemon') {
+                // FIX: Asegurar que el overlay de turno esté oculto explícitamente durante la selección
+                UI.elements.onlineWaitScreen.classList.add('hidden');
+
                 UI.elements.setupScreen.classList.add('hidden');
                 const currentRegionId = `${data.region.start}-${data.region.end}`;
                 
@@ -279,23 +332,20 @@ export const Game = {
     triggerRematch: async () => {
         if (gameState.mode === 'local') {
             resetGameState();
+            gameState.mode = 'local';
             UI.resetViews();
+            UI.elements.modeScreen.classList.add('hidden');
             UI.elements.setupScreen.classList.remove('hidden');
             return;
         }
+        
+        if (!gameState.online.gameId) return UI.showModal("Error", "Sesión perdida.", () => Game.resetGame(), true);
+
         const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId);
         try {
             await updateDoc(gameRef, {
-                status: 'selecting_region',
-                region: null,
-                winner: null,
-                interaction: null,
-                turn: gameState.online.data.hostId,
-                'player1.secret': null,
-                'player1.eliminated': [],
-                'player2.secret': null,
-                'player2.eliminated': [],
-                lastActivity: Date.now()
+                status: 'selecting_region', region: null, winner: null, interaction: null,
+                turn: gameState.online.data.hostId, 'player1.secret': null, 'player1.eliminated': [], 'player2.secret': null, 'player2.eliminated': [], lastActivity: Date.now()
             });
             UI.elements.winnerModal.classList.add('hidden');
         } catch (e) {
@@ -306,7 +356,7 @@ export const Game = {
     startLocalSelection: (player) => {
         UI.elements.selectionScreen.classList.remove('hidden');
         const title = UI.elements.selectionScreen.querySelector('h2');
-        title.textContent = `Jugador ${player}: Elige Personaje`;
+        if(title) title.textContent = `Jugador ${player}: Elige Personaje`;
         
         UI.renderGrid(UI.elements.selectionGrid, gameState.pokemonList, (poke) => {
             UI.showModal(`¿Elegir a ${poke.name}?`, "Será tu personaje secreto.", () => {
@@ -331,10 +381,12 @@ export const Game = {
                 UI.showLoading(true);
                 const field = gameState.online.role === 'host' ? 'player1.secret' : 'player2.secret';
                 try {
-                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
-                        [field]: poke,
-                        lastActivity: Date.now() 
-                    });
+                    if (gameState.online.gameId) {
+                        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
+                            [field]: poke,
+                            lastActivity: Date.now() 
+                        });
+                    }
                 } catch(e) {
                     UI.showModal("Error", "Error al guardar.", null, true);
                     UI.elements.selectionScreen.classList.remove('hidden');
@@ -349,7 +401,8 @@ export const Game = {
         UI.elements.guessBtn.classList.remove('opacity-50', 'cursor-not-allowed');
         UI.elements.gameBoardScreen.classList.add('hidden');
         UI.elements.interstitialScreen.classList.remove('hidden');
-        UI.elements.interstitialScreen.querySelector('h2').textContent = `Turno Jugador ${player}`;
+        const h2 = UI.elements.interstitialScreen.querySelector('h2');
+        if(h2) h2.textContent = `Turno Jugador ${player}`;
         
         UI.renderGrid(UI.elements.mainGrid, gameState.pokemonList, (poke) => {
              const data = player === 1 ? gameState.local.p1 : gameState.local.p2;
@@ -383,10 +436,13 @@ export const Game = {
             let newElim = [...(myData.eliminated || [])];
             if (newElim.includes(poke.id)) newElim = newElim.filter(id => id !== poke.id);
             else newElim.push(poke.id);
-            updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
-                [`${myRole}.eliminated`]: newElim,
-                lastActivity: Date.now()
-            });
+            
+            if (gameState.online.gameId) {
+                updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
+                    [`${myRole}.eliminated`]: newElim,
+                    lastActivity: Date.now()
+                });
+            }
         }, elimSet);
     },
 
@@ -397,10 +453,12 @@ export const Game = {
         } else {
             const data = gameState.online.data;
             const nextTurnId = data.turn === data.player1.id ? data.player2.id : data.player1.id;
-            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
-                turn: nextTurnId,
-                lastActivity: Date.now()
-            });
+            if (gameState.online.gameId) {
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
+                    turn: nextTurnId,
+                    lastActivity: Date.now()
+                });
+            }
         }
     },
 
@@ -409,7 +467,6 @@ export const Game = {
             UI.elements.guessModal.classList.add('hidden');
             let isCorrect = false;
             let targetSecret = null;
-
             if (gameState.mode === 'local') {
                 const current = gameState.local.turn;
                 targetSecret = current === 1 ? gameState.local.p2.secret : gameState.local.p1.secret;
@@ -430,10 +487,11 @@ export const Game = {
                      UI.elements.winnerRevealName.textContent = targetSecret.name;
                      UI.elements.winnerModal.classList.remove('hidden');
                  }
-                 else await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
-                     winner: auth.currentUser.uid,
-                     lastActivity: Date.now()
-                 });
+                 else {
+                     if (gameState.online.gameId) {
+                         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { winner: auth.currentUser.uid, lastActivity: Date.now() });
+                     }
+                 }
             } else {
                 if (gameState.mode === 'local') {
                     const p = gameState.local.turn;
@@ -445,15 +503,17 @@ export const Game = {
                     const currentElim = gameState.online.data[myRole].eliminated || [];
                     if (!currentElim.includes(poke.id)) {
                         const newElim = [...currentElim, poke.id];
-                        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
-                            [`${myRole}.eliminated`]: newElim,
-                            lastActivity: Date.now()
-                        });
+                        if (gameState.online.gameId) {
+                            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
+                                [`${myRole}.eliminated`]: newElim,
+                                lastActivity: Date.now()
+                            });
+                        }
                     }
                 }
                 gameState.hasGuessedThisTurn = true;
                 UI.elements.guessBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                UI.showModal("¡Incorrecto!", `Elegiste a ${poke.name}, pero no es. Se ha eliminado del tablero. Tu turno termina.`, () => Game.handleEndTurn(), true);
+                UI.showModal("¡Incorrecto!", `Elegiste a ${poke.name}, pero no es. Tu turno termina.`, () => Game.handleEndTurn(), true);
             }
         });
     },
@@ -481,7 +541,7 @@ export const Game = {
             const currentElim = gameState.online.data[myRole].eliminated || [];
             const newElim = [...new Set([...currentElim, ...toEliminate])];
             
-             if (!gameState.online.data?.interaction) {
+             if (!gameState.online.data?.interaction && gameState.online.gameId) {
                 await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
                     [`${myRole}.eliminated`]: newElim,
                     lastActivity: Date.now()
@@ -530,10 +590,12 @@ function checkSelectionState(data, myRole) {
     }
     
     if (data.player1.secret && data.player2.secret && data.status !== 'playing' && gameState.online.role === 'host') {
-         updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
-             status: 'playing',
-             lastActivity: Date.now()
-         });
+        if (gameState.online.gameId) {
+             updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
+                 status: 'playing',
+                 lastActivity: Date.now()
+             });
+        }
     }
 }
 

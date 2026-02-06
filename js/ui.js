@@ -47,7 +47,7 @@ const DOM = {
     get winnerRevealImg() { return document.getElementById('winnerRevealImg'); },
     get winnerRevealName() { return document.getElementById('winnerRevealName'); },
     
-    // UI Modal Elementos
+    // UI Modal Elementos (Botones directos)
     get uiModalTitle() { return document.getElementById('uiModalTitle'); },
     get uiModalText() { return document.getElementById('uiModalText'); },
     get uiModalConfirm() { return document.getElementById('uiModalConfirm'); },
@@ -78,6 +78,7 @@ export const UI = {
         if (!DOM.btnOnline) return;
         if (connected) {
             DOM.btnOnline.classList.remove('opacity-50', 'cursor-not-allowed');
+            DOM.btnOnline.disabled = false;
             DOM.connectionStatus.textContent = "● Conectado";
             DOM.connectionStatus.style.color = "green";
         } else {
@@ -86,56 +87,54 @@ export const UI = {
         }
     },
 
+    // --- FUNCIÓN SHOWMODAL SIMPLIFICADA (Sin clonación) ---
     showModal: (title, text, onConfirm, isAlert = false) => {
         DOM.uiModalTitle.textContent = title;
         DOM.uiModalText.textContent = text;
         DOM.uiModal.classList.remove('hidden');
         
-        const oldConfirm = DOM.uiModalConfirm;
-        const oldCancel = DOM.uiModalCancel;
-        
-        const newConfirm = oldConfirm.cloneNode(true);
-        const newCancel = oldCancel.cloneNode(true);
-        
-        // Reemplazamos en el DOM. El ID se mantiene.
-        oldConfirm.parentNode.replaceChild(newConfirm, oldConfirm);
-        oldCancel.parentNode.replaceChild(newCancel, oldCancel);
-        
+        const btnConfirm = DOM.uiModalConfirm;
+        const btnCancel = DOM.uiModalCancel;
+
+        // Reiniciar visibilidad
+        btnCancel.classList.remove('hidden');
+
         if (isAlert) {
-            newCancel.classList.add('hidden');
-            newConfirm.textContent = "OK";
-            newConfirm.className = "w-full py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all";
+            btnCancel.classList.add('hidden');
+            btnConfirm.textContent = "OK";
+            btnConfirm.className = "btn-primary w-full"; // Clase sólida azul
             
-            newConfirm.onclick = () => {
+            btnConfirm.onclick = () => {
                  DOM.uiModal.classList.add('hidden');
                  if(onConfirm) onConfirm();
             };
         } else {
-            newCancel.classList.remove('hidden');
-            newConfirm.textContent = "Confirmar";
-            newConfirm.className = "flex-1 py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all";
-            newCancel.className = "flex-1 py-3 rounded-xl font-bold text-slate-500 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all";
+            btnConfirm.textContent = "Confirmar";
+            btnCancel.textContent = "Cancelar";
+            
+            btnConfirm.className = "btn-primary flex-1";
+            btnCancel.className = "btn-secondary flex-1";
 
-            newConfirm.onclick = () => {
+            btnConfirm.onclick = () => {
                  DOM.uiModal.classList.add('hidden');
                  if(onConfirm) onConfirm();
             };
-            newCancel.onclick = () => DOM.uiModal.classList.add('hidden');
+            
+            // Importante: onclick simple para cancelar
+            btnCancel.onclick = () => {
+                DOM.uiModal.classList.add('hidden');
+            };
         }
     },
 
+    // --- MODAL DE PREGUNTA AL RIVAL ---
     showQuestionModal: (criteria, isType, onResponse) => {
         let questionText = "";
-        
-        // --- LÓGICA DE TEXTO PARA PREGUNTAS ---
         if (isType) {
-            // Preguntas de TIPOS (Fuego, Agua...)
             const translatedTypes = criteria.map(t => typeTranslations[t] || t);
             if (translatedTypes.length === 1) questionText = `¿Tiene el tipo ${translatedTypes[0]}?`;
             else questionText = `¿Tiene alguno de los tipos: ${translatedTypes.join(' o ')}?`;
         } else {
-            // Preguntas de ESTRUCTURA (1 tipo o 2 tipos)
-            // Aquí aseguramos que el texto sea claro para el oponente
             if (criteria[0] === 'single') questionText = "¿Tiene UN solo tipo?";
             else if (criteria[0] === 'dual') questionText = "¿Tiene DOS tipos?";
         }
@@ -144,27 +143,22 @@ export const UI = {
         DOM.uiModalText.textContent = questionText;
         DOM.uiModal.classList.remove('hidden');
         
-        const oldConfirm = DOM.uiModalConfirm;
-        const oldCancel = DOM.uiModalCancel;
-        const newConfirm = oldConfirm.cloneNode(true);
-        const newCancel = oldCancel.cloneNode(true);
-        
-        oldConfirm.parentNode.replaceChild(newConfirm, oldConfirm);
-        oldCancel.parentNode.replaceChild(newCancel, oldCancel);
+        const btnConfirm = DOM.uiModalConfirm;
+        const btnCancel = DOM.uiModalCancel;
 
-        // Botones SÍ / NO para responder
-        newConfirm.textContent = "SÍ";
-        newConfirm.className = "flex-1 py-3 rounded-xl font-bold text-white bg-green-600 hover:bg-green-700 shadow-lg transition-all";
-        
-        newCancel.textContent = "NO";
-        newCancel.className = "flex-1 py-3 rounded-xl font-bold text-white bg-red-500 hover:bg-red-600 shadow-lg transition-all";
-        newCancel.classList.remove('hidden');
-
-        newConfirm.onclick = () => {
+        // Configuración para SÍ
+        btnConfirm.textContent = "SÍ";
+        btnConfirm.className = "btn-success flex-1 py-3"; // Verde
+        btnConfirm.onclick = () => {
              DOM.uiModal.classList.add('hidden');
              onResponse(true);
         };
-        newCancel.onclick = () => {
+
+        // Configuración para NO
+        btnCancel.textContent = "NO";
+        btnCancel.className = "btn-danger flex-1 py-3"; // Rojo
+        btnCancel.classList.remove('hidden');
+        btnCancel.onclick = () => {
             DOM.uiModal.classList.add('hidden');
             onResponse(false);
         };
@@ -180,11 +174,13 @@ export const UI = {
             if (gameState.hideEliminated && isEliminated) return;
 
             const div = document.createElement('div');
-            div.className = `card relative bg-white dark:bg-slate-800 rounded-xl p-1 shadow-sm border border-slate-100 dark:border-slate-700 ${isEliminated ? 'eliminated' : 'cursor-pointer hover:scale-105'}`;
-            div.classList.add(`t-${poke.types[0]}`, 'card-border');
+            div.className = `card relative rounded-xl p-1 shadow-sm ${isEliminated ? 'eliminated' : 'cursor-pointer hover:scale-105'}`;
             
+            div.classList.add(`t-${poke.types[0]}`);
+            div.classList.add('border-type-bottom');
+
             const typesHtml = poke.types.map(t => 
-                `<span class="inline-block w-4 h-4 rounded-full t-${t} type-badge border border-slate-100 dark:border-slate-700 shadow-sm" title="${typeTranslations[t] || t}"></span>`
+                `<span class="type-badge t-${t} bg-type-filled border border-white dark:border-slate-700 shadow-sm" title="${typeTranslations[t] || t}"></span>`
             ).join('');
 
             div.innerHTML = `
@@ -202,13 +198,15 @@ export const UI = {
         if (!secret) return;
         DOM.hudSecretImg.src = secret.image;
         DOM.hudSecretName.textContent = secret.name;
+        
         DOM.turnStatus.textContent = isMyTurn ? "TU TURNO" : "ESPERANDO";
-        DOM.turnStatus.className = isMyTurn ? "font-black text-sm text-poke-blue dark:text-blue-400 animate-pulse" : "font-bold text-sm text-slate-400 dark:text-slate-500";
+        DOM.turnStatus.style.color = isMyTurn ? "#3B82F6" : "#94a3b8"; 
+        DOM.turnStatus.style.fontWeight = "900";
     },
 
     showWinner: (isMeWinner, oppSecret) => {
         DOM.winnerTitle.textContent = isMeWinner ? "¡GANASTE!" : "DERROTA";
-        DOM.winnerTitle.className = isMeWinner ? "text-4xl font-black mb-2 text-green-500" : "text-4xl font-black mb-2 text-red-500";
+        DOM.winnerTitle.style.color = isMeWinner ? "#22c55e" : "#ef4444";
         DOM.winnerSubtitle.textContent = isMeWinner ? "¡Adivinaste correctamente!" : "Tu rival ganó la partida";
         if (oppSecret) {
             DOM.winnerRevealImg.src = oppSecret.image;
@@ -220,9 +218,11 @@ export const UI = {
     updateVisibilityBtn: () => {
         if (!DOM.visibilityBtn) return;
         if (gameState.hideEliminated) {
-            DOM.visibilityBtn.classList.add('bg-blue-100', 'text-blue-600', 'dark:bg-blue-900/50', 'dark:text-blue-300');
+            DOM.visibilityBtn.style.backgroundColor = "#dbeafe";
+            DOM.visibilityBtn.style.color = "#2563eb";
         } else {
-            DOM.visibilityBtn.classList.remove('bg-blue-100', 'text-blue-600', 'dark:bg-blue-900/50', 'dark:text-blue-300');
+            DOM.visibilityBtn.style.backgroundColor = "";
+            DOM.visibilityBtn.style.color = "";
         }
     },
 
@@ -230,13 +230,11 @@ export const UI = {
         if (!DOM.askTypesBtn) return;
         if (count > 0) {
             DOM.askTypesBtn.disabled = false;
-            DOM.askTypesBtn.classList.remove('bg-slate-300', 'cursor-not-allowed', 'dark:bg-slate-700');
-            DOM.askTypesBtn.classList.add('bg-blue-600', 'hover:bg-blue-700', 'shadow-lg');
+            DOM.askTypesBtn.classList.remove('opacity-50', 'cursor-not-allowed');
             DOM.askTypesBtn.textContent = `Preguntar por ${count} Tipo${count > 1 ? 's' : ''}`;
         } else {
             DOM.askTypesBtn.disabled = true;
-            DOM.askTypesBtn.classList.add('bg-slate-300', 'cursor-not-allowed', 'dark:bg-slate-700');
-            DOM.askTypesBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700', 'shadow-lg');
+            DOM.askTypesBtn.classList.add('opacity-50', 'cursor-not-allowed');
             DOM.askTypesBtn.textContent = "Selecciona tipos primero";
         }
     },
@@ -279,7 +277,10 @@ export const UI = {
         
         DOM.modeScreen.classList.remove('hidden');
         
-        if (DOM.visibilityBtn) DOM.visibilityBtn.classList.remove('bg-blue-100', 'text-blue-600', 'dark:bg-blue-900/50', 'dark:text-blue-300');
+        if (DOM.visibilityBtn) {
+            DOM.visibilityBtn.style.backgroundColor = "";
+            DOM.visibilityBtn.style.color = "";
+        }
         if (DOM.guessBtn) DOM.guessBtn.classList.remove('opacity-50', 'cursor-not-allowed');
     }
 };
