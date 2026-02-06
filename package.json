@@ -1,0 +1,27 @@
+{
+  "name": "pkmn-guesser",
+  "version": "1.0.0",
+  "description": "Juego de Pokemon estilo Adivina Quien",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MrCrownn/pkmn-guesser.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/MrCrownn/pkmn-guesser/issues"
+  },
+  "homepage": "https://github.com/MrCrownn/pkmn-guesser#readme",
+  "devDependencies": {
+    "tailwindcss": "^4.1.18"
+  },
+  "dependencies": {
+    "@tailwindcss/cli": "^4.1.18"
+  }
+}
