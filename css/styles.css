@@ -142,7 +142,7 @@ html.dark .btn-icon { background-color: #1e293b; border-color: #334155; color: w
 .btn-success:hover { background-color: #16a34a !important; }
 
 /* Utils */
-.pb-safe { padding-bottom: env(safe-area-inset-bottom, 20px); }
+.pb-safe { padding-bottom: calc(env(safe-area-inset-bottom) + 30px); }
 .custom-scroll::-webkit-scrollbar { width: 4px; }
 .custom-scroll::-webkit-scrollbar-track { background: transparent; }
 .custom-scroll::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; }

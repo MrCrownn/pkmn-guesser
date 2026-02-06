@@ -28,7 +28,7 @@
     <!-- ESTILOS PROPIOS -->
     <link rel="stylesheet" href="css/styles.css"> 
 </head>
-<body class=" flex flex-col text-slate-800 dark:text-slate-100 overflow-hidden transition-colors duration-300">
+<body class="flex flex-col text-slate-800 dark:text-slate-100 overflow-hidden transition-colors duration-300">
 
     <header class="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-2 shadow-sm z-30 flex justify-between items-center sticky top-0 shrink-0 h-14">
         <div class="flex items-center gap-2 cursor-pointer" id="btn-header-reset">
@@ -147,14 +147,17 @@
                 <div id="mainGrid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 sm:gap-3 max-w-[1600px] mx-auto pb-20"></div>
             </div>
             
-            <div class="p-3 pb-safe bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 shrink-0 z-20">
+            <!-- CAMBIO 2: Aumentado padding inferior (pb-8) para levantar los botones del borde -->
+            <div class="p-3 pb-8 md:pb-4 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 shrink-0 z-20">
                 <div class="flex justify-center items-center gap-2 sm:gap-3 max-w-lg mx-auto">
                     <button id="btn-open-filter" class="btn-icon shrink-0 w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-200 transition-colors" title="Filtro">🌪️</button>
                     <button id="btn-visibility" class="btn-icon shrink-0 w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-200 transition-colors" title="Ocultar">👁️</button>
+                    
                     <button id="btn-open-guess" class="btn-action btn-warning flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold bg-yellow-400 hover:bg-yellow-500 text-black shadow-sm transition-all active:scale-95">
                         <span class="text-lg shrink-0">⚡</span> 
                         <span class="font-bold text-xs sm:text-sm whitespace-nowrap">ARRIESGAR</span>
                     </button>
+                    
                     <button id="btn-end-turn" class="btn-action btn-danger flex-1 whitespace-nowrap px-4 py-3 rounded-xl font-bold text-xs sm:text-sm bg-red-500 hover:bg-red-600 text-white shadow-sm transition-all active:scale-95">FIN TURNO</button>
                 </div>
             </div>
@@ -223,7 +226,6 @@
             <div class="bg-white dark:bg-slate-900 rounded-3xl p-8 w-full max-w-sm text-center relative z-10">
                 <div class="text-6xl mb-4">🏆</div>
                 <h2 id="winnerTitle" class="text-3xl font-black mb-2">¡GANASTE!</h2>
-                <!-- ELEMENTO AGREGADO: Aquí es donde JS intenta escribir el texto -->
                 <p id="winnerSubtitle" class="text-slate-500 mb-6 font-bold">Correcto</p>
                 
                 <div class="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700 mb-6">
