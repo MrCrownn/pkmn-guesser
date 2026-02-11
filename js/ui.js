@@ -4,7 +4,7 @@ export const typeTranslations = {
     normal: "Normal", fire: "Fuego", water: "Agua", grass: "Planta",
     electric: "Eléctrico", ice: "Hielo", fighting: "Lucha", poison: "Veneno",
     ground: "Tierra", flying: "Volador", psychic: "Psíquico", bug: "Bicho",
-    rock: "Roca", ghost: "Fantasma", dragon: "Dragón", steel: "Acero", fairy: "Hada"
+    rock: "Roca", ghost: "Fantasma", dragon: "Dragón", steel: "Acero", fairy: "Hada",dark: "siniestro"
 };
 
 const DOM = {
@@ -47,13 +47,13 @@ const DOM = {
     get winnerRevealImg() { return document.getElementById('winnerRevealImg'); },
     get winnerRevealName() { return document.getElementById('winnerRevealName'); },
     
-    // UI Modal Elementos (Botones directos)
+    // UI Modal Elementos
     get uiModalTitle() { return document.getElementById('uiModalTitle'); },
     get uiModalText() { return document.getElementById('uiModalText'); },
     get uiModalConfirm() { return document.getElementById('uiModalConfirm'); },
     get uiModalCancel() { return document.getElementById('uiModalCancel'); },
     
-    // Botones de acción
+    // Botones
     get guessBtn() { return document.getElementById('btn-open-guess'); },
     get askTypesBtn() { return document.getElementById('askTypesBtn'); },
     get visibilityBtn() { return document.getElementById('btn-visibility'); },
@@ -79,30 +79,41 @@ export const UI = {
         if (connected) {
             DOM.btnOnline.classList.remove('opacity-50', 'cursor-not-allowed');
             DOM.btnOnline.disabled = false;
-            DOM.connectionStatus.textContent = "● Conectado";
-            DOM.connectionStatus.style.color = "green";
+            if(DOM.connectionStatus) {
+                DOM.connectionStatus.textContent = "● Conectado";
+                DOM.connectionStatus.className = "mb-4 text-xs font-bold text-green-500";
+            }
         } else {
-            DOM.connectionStatus.textContent = "Offline";
-            DOM.connectionStatus.style.color = "red";
+            if(DOM.connectionStatus) {
+                DOM.connectionStatus.textContent = "Offline";
+                DOM.connectionStatus.className = "mb-4 text-xs font-bold text-red-500";
+            }
         }
     },
 
-    // --- FUNCIÓN SHOWMODAL SIMPLIFICADA (Sin clonación) ---
+    // --- MODAL PERSONALIZADO (NO CONFIRM NATIVO) ---
     showModal: (title, text, onConfirm, isAlert = false) => {
-        DOM.uiModalTitle.textContent = title;
-        DOM.uiModalText.textContent = text;
+        if(DOM.uiModalTitle) DOM.uiModalTitle.textContent = title;
+        if(DOM.uiModalText) DOM.uiModalText.textContent = text;
         DOM.uiModal.classList.remove('hidden');
         
-        const btnConfirm = DOM.uiModalConfirm;
-        const btnCancel = DOM.uiModalCancel;
+        // Clonamos para limpiar eventos previos
+        const oldConfirm = document.getElementById('uiModalConfirm');
+        const oldCancel = document.getElementById('uiModalCancel');
+        const newConfirm = oldConfirm.cloneNode(true);
+        const newCancel = oldCancel.cloneNode(true);
+        oldConfirm.parentNode.replaceChild(newConfirm, oldConfirm);
+        oldCancel.parentNode.replaceChild(newCancel, oldCancel);
 
-        // Reiniciar visibilidad
+        const btnConfirm = document.getElementById('uiModalConfirm');
+        const btnCancel = document.getElementById('uiModalCancel');
+
         btnCancel.classList.remove('hidden');
 
         if (isAlert) {
             btnCancel.classList.add('hidden');
-            btnConfirm.textContent = "OK";
-            btnConfirm.className = "btn-primary w-full"; // Clase sólida azul
+            btnConfirm.textContent = "Aceptar";
+            btnConfirm.className = "bg-blue-500 text-white w-full py-3 rounded-xl font-bold";
             
             btnConfirm.onclick = () => {
                  DOM.uiModal.classList.add('hidden');
@@ -112,22 +123,20 @@ export const UI = {
             btnConfirm.textContent = "Confirmar";
             btnCancel.textContent = "Cancelar";
             
-            btnConfirm.className = "btn-primary flex-1";
-            btnCancel.className = "btn-secondary flex-1";
+            btnConfirm.className = "bg-blue-500 text-white py-3 rounded-xl font-bold flex-1";
+            btnCancel.className = "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white py-3 rounded-xl font-bold flex-1";
 
             btnConfirm.onclick = () => {
                  DOM.uiModal.classList.add('hidden');
                  if(onConfirm) onConfirm();
             };
             
-            // Importante: onclick simple para cancelar
             btnCancel.onclick = () => {
                 DOM.uiModal.classList.add('hidden');
             };
         }
     },
 
-    // --- MODAL DE PREGUNTA AL RIVAL ---
     showQuestionModal: (criteria, isType, onResponse) => {
         let questionText = "";
         if (isType) {
@@ -143,20 +152,26 @@ export const UI = {
         DOM.uiModalText.textContent = questionText;
         DOM.uiModal.classList.remove('hidden');
         
-        const btnConfirm = DOM.uiModalConfirm;
-        const btnCancel = DOM.uiModalCancel;
+        // Clonar botones para limpiar eventos
+        const oldConfirm = document.getElementById('uiModalConfirm');
+        const oldCancel = document.getElementById('uiModalCancel');
+        const newConfirm = oldConfirm.cloneNode(true);
+        const newCancel = oldCancel.cloneNode(true);
+        oldConfirm.parentNode.replaceChild(newConfirm, oldConfirm);
+        oldCancel.parentNode.replaceChild(newCancel, oldCancel);
 
-        // Configuración para SÍ
+        const btnConfirm = document.getElementById('uiModalConfirm');
+        const btnCancel = document.getElementById('uiModalCancel');
+
         btnConfirm.textContent = "SÍ";
-        btnConfirm.className = "btn-success flex-1 py-3"; // Verde
+        btnConfirm.className = "bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl flex-1"; 
         btnConfirm.onclick = () => {
              DOM.uiModal.classList.add('hidden');
              onResponse(true);
         };
 
-        // Configuración para NO
         btnCancel.textContent = "NO";
-        btnCancel.className = "btn-danger flex-1 py-3"; // Rojo
+        btnCancel.className = "bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl flex-1"; 
         btnCancel.classList.remove('hidden');
         btnCancel.onclick = () => {
             DOM.uiModal.classList.add('hidden');
@@ -166,32 +181,58 @@ export const UI = {
 
     closeModal: () => DOM.uiModal.classList.add('hidden'),
 
+    // --- RENDERIZADO VISUAL CORRECTO ---
     renderGrid: (container, list, onClick, eliminatedSet = new Set()) => {
         if (!container || !Array.isArray(list)) return;
         container.innerHTML = '';
+        
+        const fragment = document.createDocumentFragment();
+        const isGuessModal = container.id === 'guessGrid';
+
         list.forEach(poke => {
             const isEliminated = eliminatedSet.has(poke.id);
             if (gameState.hideEliminated && isEliminated) return;
 
             const div = document.createElement('div');
-            div.className = `card relative rounded-xl p-1 shadow-sm ${isEliminated ? 'eliminated' : 'cursor-pointer hover:scale-105'}`;
             
-            div.classList.add(`t-${poke.types[0]}`);
-            div.classList.add('border-type-bottom');
+            // Usamos tu clase 'card' para mantener la estética original en el tablero principal
+            // Y un estilo más simple pero consistente para el modal de arriesgar
+            if (isGuessModal) {
+                div.className = `relative rounded-xl p-2 border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-between transition-all select-none
+                    ${isEliminated ? 'opacity-25 grayscale bg-slate-100 dark:bg-slate-900' : 'bg-white dark:bg-slate-800 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700'}`;
+            } else {
+                div.className = `card relative rounded-xl p-1 shadow-sm ${isEliminated ? 'eliminated' : 'cursor-pointer hover:scale-105'}`;
+                // Agregamos la clase de tipo principal para bordes o efectos si tu CSS lo usa
+                div.classList.add(`t-${poke.types[0].toLowerCase()}`); 
+                div.classList.add('card-border'); // Borde inferior de color
+            }
 
+            // --- AQUÍ ESTÁ EL FIX DE LOS CÍRCULOS ---
+            // Usamos las clases de Tailwind (t-fire, t-water) + bg-type-filled para que el CSS pinte el color
             const typesHtml = poke.types.map(t => 
-                `<span class="type-badge t-${t} bg-type-filled border border-white dark:border-slate-700 shadow-sm" title="${typeTranslations[t] || t}"></span>`
+                `<span class="w-3 h-3 rounded-full t-${t.toLowerCase()} bg-type-filled border border-slate-100 dark:border-slate-700 shadow-sm" title="${typeTranslations[t] || t}"></span>`
             ).join('');
 
-            div.innerHTML = `
-                <img src="${poke.image}" class="w-full aspect-square object-contain bg-slate-50 dark:bg-slate-900 rounded-lg mb-1" loading="lazy">
-                <div class="text-center text-[10px] sm:text-xs font-bold truncate px-1 text-slate-700 dark:text-slate-200">${poke.name}</div>
-                <div class="flex justify-center gap-1 mt-1 pb-1">${typesHtml}</div>
-            `;
+            if (isGuessModal) {
+                 div.innerHTML = `
+                    <img src="${poke.image}" class="w-16 h-16 object-contain mb-1 pointer-events-none" loading="lazy">
+                    <div class="text-[10px] font-bold truncate w-full text-center text-slate-700 dark:text-slate-200 pointer-events-none">${poke.name}</div>
+                    <div class="flex justify-center gap-1 mt-1 pointer-events-none">${typesHtml}</div>
+                `;
+            } else {
+                // Diseño original del tablero
+                div.innerHTML = `
+                    <img src="${poke.image}" class="w-full aspect-square object-contain bg-slate-50 dark:bg-slate-900 rounded-lg mb-1" loading="lazy">
+                    <div class="text-center text-[10px] sm:text-xs font-bold truncate px-1 text-slate-700 dark:text-slate-200">${poke.name}</div>
+                    <div class="flex justify-center gap-1 mt-1 pb-1">${typesHtml}</div>
+                `;
+            }
             
             div.onclick = (e) => { e.stopPropagation(); onClick(poke); };
-            container.appendChild(div);
+            fragment.appendChild(div);
         });
+        
+        container.appendChild(fragment);
     },
 
     updateHUD: (secret, isMyTurn) => {
@@ -200,17 +241,22 @@ export const UI = {
         DOM.hudSecretName.textContent = secret.name;
         
         DOM.turnStatus.textContent = isMyTurn ? "TU TURNO" : "ESPERANDO";
-        DOM.turnStatus.style.color = isMyTurn ? "#3B82F6" : "#94a3b8"; 
-        DOM.turnStatus.style.fontWeight = "900";
+        DOM.turnStatus.className = isMyTurn ? "font-black text-sm text-blue-500 animate-pulse" : "font-bold text-sm text-slate-400";
     },
 
     showWinner: (isMeWinner, oppSecret) => {
-        DOM.winnerTitle.textContent = isMeWinner ? "¡GANASTE!" : "DERROTA";
-        DOM.winnerTitle.style.color = isMeWinner ? "#22c55e" : "#ef4444";
-        DOM.winnerSubtitle.textContent = isMeWinner ? "¡Adivinaste correctamente!" : "Tu rival ganó la partida";
+        if(DOM.winnerTitle) {
+            DOM.winnerTitle.textContent = isMeWinner ? "¡GANASTE!" : "DERROTA";
+            DOM.winnerTitle.className = isMeWinner ? "text-3xl font-black mb-2 text-green-500" : "text-3xl font-black mb-2 text-red-500";
+        }
+        
+        if(DOM.winnerSubtitle) {
+            DOM.winnerSubtitle.textContent = isMeWinner ? "¡Adivinaste correctamente!" : "Tu rival ganó la partida";
+        }
+        
         if (oppSecret) {
-            DOM.winnerRevealImg.src = oppSecret.image;
-            DOM.winnerRevealName.textContent = oppSecret.name;
+            if(DOM.winnerRevealImg) DOM.winnerRevealImg.src = oppSecret.image;
+            if(DOM.winnerRevealName) DOM.winnerRevealName.textContent = oppSecret.name;
         }
         DOM.winnerModal.classList.remove('hidden');
     },
@@ -218,11 +264,11 @@ export const UI = {
     updateVisibilityBtn: () => {
         if (!DOM.visibilityBtn) return;
         if (gameState.hideEliminated) {
-            DOM.visibilityBtn.style.backgroundColor = "#dbeafe";
-            DOM.visibilityBtn.style.color = "#2563eb";
+            DOM.visibilityBtn.classList.add('bg-blue-100', 'text-blue-600', 'border-blue-300');
+            DOM.visibilityBtn.classList.remove('bg-slate-100', 'dark:bg-slate-800');
         } else {
-            DOM.visibilityBtn.style.backgroundColor = "";
-            DOM.visibilityBtn.style.color = "";
+            DOM.visibilityBtn.classList.remove('bg-blue-100', 'text-blue-600', 'border-blue-300');
+            DOM.visibilityBtn.classList.add('bg-slate-100', 'dark:bg-slate-800');
         }
     },
 
@@ -274,12 +320,12 @@ export const UI = {
         DOM.interstitialScreen.classList.add('hidden');
         DOM.filterModal.classList.add('hidden');
         DOM.roomCodeDisplay.classList.add('hidden');
+        DOM.guessModal.classList.add('hidden');
         
         DOM.modeScreen.classList.remove('hidden');
         
         if (DOM.visibilityBtn) {
-            DOM.visibilityBtn.style.backgroundColor = "";
-            DOM.visibilityBtn.style.color = "";
+            DOM.visibilityBtn.classList.remove('bg-blue-100', 'text-blue-600');
         }
         if (DOM.guessBtn) DOM.guessBtn.classList.remove('opacity-50', 'cursor-not-allowed');
     }

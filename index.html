@@ -2,7 +2,7 @@
 <html lang="es" class="light">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Poké-Adivina: Modular</title>
     
     <!-- FUENTES -->
@@ -93,23 +93,54 @@
             <button id="btn-copy-code" class="text-blue-500 font-bold hover:underline">Copiar Enlace</button>
         </div>
 
-        <!-- PANTALLA 4: REGIONES -->
-        <div id="setupScreen" class="hidden absolute inset-0 z-50 flex flex-col items-center justify-center p-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm overflow-y-auto">
-            <div class="max-w-4xl w-full text-center my-auto">
-                <h2 class="text-3xl font-black mb-6">Elige Región</h2>
-                <div id="region-buttons-container" class="grid grid-cols-2 md:grid-cols-3 gap-3 w-full max-w-2xl mx-auto">
-                    <button data-region="kanto" class="region-btn kanto bg-slate-200 dark:bg-slate-800 p-4 rounded-xl font-bold hover:scale-105 transition-transform">Kanto (Gen 1)</button>
-                    <button data-region="johto" class="region-btn johto bg-slate-200 dark:bg-slate-800 p-4 rounded-xl font-bold hover:scale-105 transition-transform">Johto (Gen 2)</button>
-                    <button data-region="hoenn" class="region-btn hoenn bg-slate-200 dark:bg-slate-800 p-4 rounded-xl font-bold hover:scale-105 transition-transform">Hoenn (Gen 3)</button>
-                    <button data-region="sinnoh" class="region-btn sinnoh bg-slate-200 dark:bg-slate-800 p-4 rounded-xl font-bold hover:scale-105 transition-transform">Sinnoh (Gen 4)</button>
-                    <button data-region="unova" class="region-btn unova bg-slate-200 dark:bg-slate-800 p-4 rounded-xl font-bold hover:scale-105 transition-transform">Teselia (Gen 5)</button>
-                    <button data-region="kalos" class="region-btn kalos bg-slate-200 dark:bg-slate-800 p-4 rounded-xl font-bold hover:scale-105 transition-transform">Kalos (Gen 6)</button>
-                    <button data-region="alola" class="region-btn alola bg-slate-200 dark:bg-slate-800 p-4 rounded-xl font-bold hover:scale-105 transition-transform">Alola (Gen 7)</button>
-                    <button data-region="galar" class="region-btn galar bg-slate-200 dark:bg-slate-800 p-4 rounded-xl font-bold hover:scale-105 transition-transform">Galar (Gen 8)</button>
-                    <button data-region="paldea" class="region-btn paldea bg-slate-200 dark:bg-slate-800 p-4 rounded-xl font-bold hover:scale-105 transition-transform">Paldea (Gen 9)</button>
+         <!-- PANTALLA 4: CONFIGURACIÓN (NUEVA MULTISELECCIÓN) -->
+        <div id="setupScreen" class="hidden absolute inset-0 z-50 flex flex-col bg-white dark:bg-slate-900 overflow-hidden">
+            <div class="p-4 border-b border-slate-200 dark:border-slate-800 shrink-0 flex justify-between items-center">
+                <h2 class="text-2xl font-black">Configuración</h2>
+                <div class="text-xs text-right text-slate-400">
+                    <p>Elige al menos 1 región</p>
                 </div>
             </div>
+            
+            <div class="flex-1 overflow-y-auto p-6 custom-scroll pb-24">
+                <!-- SECCIÓN REGIONES -->
+                <div class="mb-8">
+                    <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-map"></i> Regiones
+                    </h3>
+                    <div id="region-buttons-container" class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        <button data-region="kanto" class="region-btn p-4 rounded-xl font-bold bg-slate-100 dark:bg-slate-800 border-2 border-transparent hover:border-slate-300 transition-all opacity-50">Kanto (Gen 1)</button>
+                        <button data-region="johto" class="region-btn p-4 rounded-xl font-bold bg-slate-100 dark:bg-slate-800 border-2 border-transparent hover:border-slate-300 transition-all opacity-50">Johto (Gen 2)</button>
+                        <button data-region="hoenn" class="region-btn p-4 rounded-xl font-bold bg-slate-100 dark:bg-slate-800 border-2 border-transparent hover:border-slate-300 transition-all opacity-50">Hoenn (Gen 3)</button>
+                        <button data-region="sinnoh" class="region-btn p-4 rounded-xl font-bold bg-slate-100 dark:bg-slate-800 border-2 border-transparent hover:border-slate-300 transition-all opacity-50">Sinnoh (Gen 4)</button>
+                        <button data-region="unova" class="region-btn p-4 rounded-xl font-bold bg-slate-100 dark:bg-slate-800 border-2 border-transparent hover:border-slate-300 transition-all opacity-50">Teselia (Gen 5)</button>
+                        <button data-region="kalos" class="region-btn p-4 rounded-xl font-bold bg-slate-100 dark:bg-slate-800 border-2 border-transparent hover:border-slate-300 transition-all opacity-50">Kalos (Gen 6)</button>
+                        <button data-region="alola" class="region-btn p-4 rounded-xl font-bold bg-slate-100 dark:bg-slate-800 border-2 border-transparent hover:border-slate-300 transition-all opacity-50">Alola (Gen 7)</button>
+                        <button data-region="galar" class="region-btn p-4 rounded-xl font-bold bg-slate-100 dark:bg-slate-800 border-2 border-transparent hover:border-slate-300 transition-all opacity-50">Galar (Gen 8)</button>
+                        <button data-region="paldea" class="region-btn p-4 rounded-xl font-bold bg-slate-100 dark:bg-slate-800 border-2 border-transparent hover:border-slate-300 transition-all opacity-50">Paldea (Gen 9)</button>
+                    </div>
+                </div>
+
+                <!-- SECCIÓN TIPOS (NUEVA) -->
+                <div class="mb-4">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider">Tipos Permitidos</h3>
+                        <button id="btn-toggle-all-types" class="text-xs font-bold text-blue-500 hover:underline">Todos / Ninguno</button>
+                    </div>
+                    <div id="setup-type-grid" class="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        <!-- Se llena dinámicamente con JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- BOTÓN JUGAR FLOTANTE -->
+            <div class="p-4 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-slate-200 dark:border-slate-800 absolute bottom-0 w-full z-20 pb-safe">
+                <button id="btn-start-game" class="btn-primary w-full py-4 text-xl font-black shadow-lg rounded-2xl bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    JUGAR (<span id="count-display">0</span>)
+                </button>
+            </div>
         </div>
+
 
         <!-- LOADING -->
         <div id="loadingScreen" class="hidden absolute inset-0 z-[80] bg-white dark:bg-slate-900 flex flex-col items-center justify-center">

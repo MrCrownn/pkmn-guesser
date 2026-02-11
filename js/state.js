@@ -1,6 +1,14 @@
 export const gameState = {
     mode: null, // 'local' | 'online'
-    pokemonList: [],
+    fullPokemonDB: [], // Base completa
+    pokemonList: [],   // Base filtrada para el juego
+    
+    // CONFIGURACIÓN DE PARTIDA
+    config: {
+        selectedRegions: new Set(),
+        selectedTypes: new Set() // Vacío = Todos
+    },
+
     local: {
         turn: 1,
         p1: { secret: null, eliminated: new Set() },
@@ -18,8 +26,12 @@ export const gameState = {
     selectedFilters: new Set()
 };
 
+
+
 export const resetGameState = () => {
     gameState.pokemonList = [];
+    gameState.config.selectedRegions.clear();
+    gameState.config.selectedTypes.clear();
     gameState.local = { turn: 1, p1: { secret: null, eliminated: new Set() }, p2: { secret: null, eliminated: new Set() } };
     gameState.online.gameId = null;
     gameState.online.role = null;
