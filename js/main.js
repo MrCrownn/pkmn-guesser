@@ -1,10 +1,71 @@
 import { auth, signInAnonymously, onAuthStateChanged } from './firebase.js';
 import { gameState } from './state.js';
-import { Game } from './game.js';
+import { Game, REGION_RANGES } from './game.js';
 import { UI, typeTranslations } from './ui.js';
+
+const GENERATION_NAMES = {
+    kanto: 'Gen 1', johto: 'Gen 2', hoenn: 'Gen 3', sinnoh: 'Gen 4',
+    unova: 'Gen 5', kalos: 'Gen 6', alola: 'Gen 7', galar: 'Gen 8', paldea: 'Gen 9'
+};
+
+// --- NUEVO SISTEMA DE CARGA DE DATOS (Soporte Gen 9/Paldea) ---
+const loadPokemonData = async () => {
+    UI.showLoading(true);
+    
+    try {
+        const typesToFetch = Object.keys(typeTranslations);
+        const promises = typesToFetch.map(type => 
+            fetch(`https://pokeapi.co/api/v2/type/${type}`).then(res => res.json())
+        );
+        
+        const results = await Promise.all(promises);
+        const tempMap = new Map();
+
+        results.forEach(data => {
+            const typeName = data.name; 
+            
+            data.pokemon.forEach(entry => {
+                const p = entry.pokemon;
+                const id = parseInt(p.url.split('/').filter(Boolean).pop());
+                
+                if (id > 1025) return; 
+
+                if (!tempMap.has(id)) {
+                    const formattedName = p.name.split('-')
+                        .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+                        .join(' ');
+
+                    tempMap.set(id, {
+                        id: id,
+                        name: formattedName,
+                        types: [],
+                        image: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`
+                    });
+                }
+                
+                const pokeEntry = tempMap.get(id);
+                if (!pokeEntry.types.includes(typeName)) {
+                    pokeEntry.types.push(typeName);
+                }
+            });
+        });
+
+        gameState.fullPokemonDB = Array.from(tempMap.values()).sort((a, b) => a.id - b.id);
+        
+        console.log(`Base de datos actualizada: ${gameState.fullPokemonDB.length} Pokémon cargados.`);
+        UI.showLoading(false);
+
+    } catch (error) {
+        console.error("Error crítico cargando Pokémon:", error);
+        alert("Hubo un error cargando los datos de Pokémon. Por favor recarga la página.");
+        UI.showLoading(false);
+    }
+};
 
 window.onload = async () => {
     UI.initTheme();
+    await loadPokemonData();
+
     try {
         await signInAnonymously(auth);
         onAuthStateChanged(auth, (u) => {
@@ -22,18 +83,6 @@ window.onload = async () => {
         UI.setConnectionStatus(false);
         console.error("Error init:", e);
     }
-    
-    // Carga de DB
-    fetch('https://raw.githubusercontent.com/fanzeyi/pokemon.json/master/pokedex.json')
-    .then(res => res.json())
-    .then(data => {
-        gameState.fullPokemonDB = data.slice(0, 1025).map(p => ({
-            id: p.id,
-            name: p.name.english,
-            types: p.type,
-            image: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${p.id}.png`
-        }));
-    });
 };
 
 const checkTurn = () => {
@@ -87,14 +136,13 @@ document.getElementById('btn-open-filter')?.addEventListener('click', () => {
     if(!grid) return;
     grid.innerHTML = '';
     
-    // --- NUEVO: Calcular tipos disponibles en la partida actual ---
+    // Calcular tipos disponibles
     const availableTypes = new Set();
     gameState.pokemonList.forEach(p => {
         p.types.forEach(t => availableTypes.add(t.toLowerCase()));
     });
 
     Object.keys(typeTranslations).forEach(t => {
-        // Solo creamos el botón si el tipo existe en los Pokémon activos
         if (!availableTypes.has(t)) return;
 
         const btn = document.createElement('button');
@@ -116,6 +164,34 @@ document.getElementById('btn-open-filter')?.addEventListener('click', () => {
         grid.appendChild(btn);
     });
     
+    // Generaciones
+    gameState.selectedGenerationFilters.clear();
+    const genGrid = document.getElementById('filterGenGrid');
+    genGrid.innerHTML = '';
+    const askGenBtn = document.getElementById('askGenerationBtn');
+
+    Object.keys(REGION_RANGES).forEach(gen => {
+        if (gameState.config.selectedRegions.has(gen)) {
+            const btn = document.createElement('button');
+            btn.className = 'bg-slate-100 dark:bg-slate-800 p-3 rounded-xl text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 opacity-80';
+            btn.textContent = GENERATION_NAMES[gen];
+            btn.onclick = () => {
+                if (gameState.selectedGenerationFilters.has(gen)) {
+                    gameState.selectedGenerationFilters.delete(gen);
+                    btn.classList.remove('filter-selected');
+                    btn.classList.add('opacity-80');
+                } else {
+                    gameState.selectedGenerationFilters.add(gen);
+                    btn.classList.add('filter-selected');
+                    btn.classList.remove('opacity-80');
+                }
+                askGenBtn.disabled = gameState.selectedGenerationFilters.size === 0;
+            };
+            genGrid.appendChild(btn);
+        }
+    });
+
+    askGenBtn.disabled = true;
     UI.updateFilterButton(0);
     UI.elements.filterModal.classList.remove('hidden');
 });
@@ -154,10 +230,20 @@ document.getElementById('askTypesBtn')?.addEventListener('click', () => {
     const types = Array.from(gameState.selectedFilters);
     UI.elements.filterModal.classList.add('hidden');
     const txt = types.map(t => typeTranslations[t]).join(' o ');
-    const question = types.length === 1 ? `¿Tiene el tipo ${txt}?` : `¿Tiene alguno de los tipos: ${txt}?`;
+    const question = types.length === 1 ? `¿Es de tipo ${txt}?` : `¿Es de tipo ${txt}?`;
     
     if (gameState.mode === 'local') askWithYesNo(question, types, true);
     else Game.sendQuestion(types, true);
+});
+
+document.getElementById('askGenerationBtn')?.addEventListener('click', () => {
+    const gens = Array.from(gameState.selectedGenerationFilters);
+    UI.elements.filterModal.classList.add('hidden');
+    const txt = gens.map(g => GENERATION_NAMES[g]).join(', ');
+    const question = gens.length === 1 ? `¿Pertenece a ${txt}?` : `¿Pertenece a una de estas generaciones: ${txt}?`;
+    
+    if (gameState.mode === 'local') askWithYesNoGenerations(question, gens);
+    else Game.sendQuestion(gens, false, true);
 });
 
 document.getElementById('btn-filter-single')?.addEventListener('click', () => {
@@ -172,18 +258,18 @@ document.getElementById('btn-filter-dual')?.addEventListener('click', () => {
 
 function askWithYesNo(text, criteria, isType) {
     UI.elements.filterModal.classList.add('hidden');
-    UI.showModal("Rival Responde", text, () => Game.applyFilter(criteria, isType, true));
-    
-    const confirmBtn = document.getElementById('uiModalConfirm');
-    const cancelBtn = document.getElementById('uiModalCancel');
-    if (confirmBtn && cancelBtn) {
-        confirmBtn.textContent = "Dijo SÍ";
-        confirmBtn.className = "bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl flex-1"; 
-        cancelBtn.textContent = "Dijo NO";
-        cancelBtn.className = "bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl flex-1"; 
-        cancelBtn.classList.remove('hidden');
-        cancelBtn.onclick = () => { UI.elements.uiModal.classList.add('hidden'); Game.applyFilter(criteria, isType, false); };
-    }
+    UI.showQuestionModal(criteria, isType, (response) => {
+        Game.applyFilter(criteria, isType, response);
+        Game.handleEndTurn(); 
+    });
+}
+
+function askWithYesNoGenerations(text, criteria) {
+    UI.elements.filterModal.classList.add('hidden');
+    UI.showQuestionModal(criteria, false, (response) => {
+        Game.applyGenerationFilter(criteria, response);
+        Game.handleEndTurn();
+    }, true);
 }
 
 document.getElementById('btn-rematch')?.addEventListener('click', () => Game.resetGame());

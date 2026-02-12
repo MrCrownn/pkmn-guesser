@@ -23,7 +23,8 @@ export const gameState = {
     },
     hasGuessedThisTurn: false,
     hideEliminated: false,
-    selectedFilters: new Set()
+    selectedFilters: new Set(),
+    selectedGenerationFilters: new Set()
 };
 
 
@@ -40,4 +41,5 @@ export const resetGameState = () => {
     gameState.hasGuessedThisTurn = false;
     gameState.hideEliminated = false;
     gameState.selectedFilters.clear();
+    gameState.selectedGenerationFilters.clear();
 };

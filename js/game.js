@@ -2,7 +2,7 @@ import { db, doc, updateDoc, onSnapshot, getDoc, collection, addDoc, setDoc } fr
 import { gameState, resetGameState } from './state.js';
 import { UI, typeTranslations } from './ui.js';
 
-const REGION_RANGES = {
+export const REGION_RANGES = {
     kanto: [1, 151], johto: [152, 251], hoenn: [252, 386], sinnoh: [387, 493],
     unova: [494, 649], kalos: [650, 721], alola: [722, 809], galar: [810, 905], paldea: [906, 1025]
 };
@@ -12,7 +12,7 @@ export const Game = {
 
     resetGame: () => {
         if (Game.unsub) Game.unsub();
-
+        
         if (window.location.hash) {
             history.pushState("", document.title, window.location.pathname + window.location.search);
         }
@@ -21,12 +21,10 @@ export const Game = {
         UI.resetViews();
         UI.showLoading(false);
         
-        // Limpiar Grids para evitar datos viejos
         if (UI.elements.selectionGrid) UI.elements.selectionGrid.innerHTML = '';
         if (UI.elements.mainGrid) UI.elements.mainGrid.innerHTML = '';
         if (UI.elements.guessGrid) UI.elements.guessGrid.innerHTML = '';
 
-        // Reset visuales
         document.querySelectorAll('.region-btn').forEach(btn => {
             btn.classList.add('opacity-50', 'bg-slate-100', 'dark:bg-slate-800');
             btn.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-50', 'dark:bg-blue-900/40', 'opacity-100');
@@ -149,7 +147,6 @@ export const Game = {
             Game.startSelectionPhase();
         } else {
             if (!gameState.online.gameId) return;
-            // Guardar configuración en Firestore
             await updateDoc(doc(db, 'games', gameState.online.gameId), {
                 config: {
                     regions: Array.from(gameState.config.selectedRegions),
@@ -167,7 +164,6 @@ export const Game = {
         gameState.local.p1.pokemon = null;
         gameState.local.p2.pokemon = null;
 
-        // Render Grid
         UI.renderGrid(UI.elements.selectionGrid, gameState.pokemonList, (poke) => {
             
             if (gameState.mode === 'local') {
@@ -192,7 +188,7 @@ export const Game = {
                     update[`${myRole}.pokemon`] = poke;
                     
                     const opponentRole = myRole === 'player1' ? 'player2' : 'player1';
-                    if (gameState.online.data && gameState.online.data[opponentRole].pokemon) {
+                    if (gameState.online.data && gameState.online.data[opponentRole] && gameState.online.data[opponentRole].pokemon) {
                         update.phase = 'battle';
                         update.turn = gameState.online.data.host;
                     }
@@ -235,7 +231,6 @@ export const Game = {
                 player2: { pokemon: null, eliminated: [] }, 
                 lastAction: null 
             });
-            
             gameState.online.gameId = roomId;
             gameState.online.role = 'host';
             Game.subscribeToGame(roomId);
@@ -290,13 +285,9 @@ export const Game = {
                 UI.elements.waitingScreen.classList.add('hidden');
                 UI.elements.setupScreen.classList.add('hidden');
                 
-                // --- FIX: Sincronización Estricta de Configuración ---
                 if (data.config) {
-                    // Actualizamos el estado local con lo que viene de la base de datos
-                    gameState.config.selectedRegions = new Set(data.config.regions || []);
-                    gameState.config.selectedTypes = new Set(data.config.types || []);
-                    
-                    // Forzamos el filtrado con la nueva configuración
+                    gameState.config.selectedRegions = new Set(data.config.regions);
+                    gameState.config.selectedTypes = new Set(data.config.types);
                     Game.filterPokemonDB(); 
                 }
 
@@ -307,8 +298,9 @@ export const Game = {
                     UI.elements.loadingScreen.classList.remove('hidden'); 
                 } else {
                     UI.elements.selectionScreen.classList.remove('hidden');
-                    // Siempre redibujar en la fase de selección para asegurar el filtro visual
-                    Game.startSelectionPhase();
+                    if (UI.elements.selectionGrid.children.length === 0) {
+                        Game.startSelectionPhase();
+                    }
                 }
             }
 
@@ -368,10 +360,29 @@ export const Game = {
         }
     },
 
-    handleEndTurn: async () => {
+    // --- MANEJO DE TURNO Y ACCIONES ---
+    
+    handleEndTurn: async (extraUpdates = {}) => {
         if (gameState.mode === 'online') {
-            const next = gameState.online.data.turn === gameState.online.data.host ? gameState.online.data.guest : gameState.online.data.host;
-            updateDoc(doc(db, 'games', gameState.online.gameId), { turn: next, lastAction: null });
+            // Calcular siguiente turno con seguridad
+            const currentTurn = gameState.online.data.turn;
+            const hostId = gameState.online.data.host;
+            const guestId = gameState.online.data.guest;
+            
+            // Si el turno actual es del host, pasa al guest, y viceversa
+            const nextTurn = currentTurn === hostId ? guestId : hostId;
+            
+            try {
+                console.log("Cambiando turno a:", nextTurn, "Actualizaciones extra:", extraUpdates);
+                await updateDoc(doc(db, 'games', gameState.online.gameId), { 
+                    turn: nextTurn, 
+                    lastAction: null,
+                    ...extraUpdates 
+                });
+            } catch (error) {
+                console.error("Error al cambiar turno:", error);
+                alert("Error de conexión al cambiar turno.");
+            }
         } else {
             gameState.local.turn = gameState.local.turn === 1 ? 2 : 1;
             UI.elements.interstitialScreen.classList.remove('hidden');
@@ -381,29 +392,54 @@ export const Game = {
     toggleVisibility: () => {
         gameState.hideEliminated = !gameState.hideEliminated;
         UI.updateVisibilityBtn();
-        if (gameState.mode === 'local') Game.renderLocalBoard();
-        else {
+        if (gameState.mode === 'local') {
+            Game.renderLocalBoard();
+        } else {
             const role = gameState.online.role === 'host' ? 'player1' : 'player2';
-            UI.renderGrid(UI.elements.mainGrid, gameState.pokemonList, null, new Set(gameState.online.data[role].eliminated));
+            
+            const clickHandler = async (poke) => {
+                const current = gameState.online.data[role].eliminated || [];
+                const next = current.includes(poke.id) 
+                    ? current.filter(id => id !== poke.id) 
+                    : [...current, poke.id];
+                await updateDoc(doc(db, 'games', gameState.online.gameId), { [`${role}.eliminated`]: next });
+            };
+
+            UI.renderGrid(
+                UI.elements.mainGrid, 
+                gameState.pokemonList, 
+                clickHandler,
+                new Set(gameState.online.data[role].eliminated)
+            );
         }
     },
     
-    sendQuestion: async (criteria, isType) => {
-        updateDoc(doc(db, 'games', gameState.online.gameId), { lastAction: { type: 'question', sender: gameState.online.myId, criteria, isType, status: 'pending' } });
+    sendQuestion: async (criteria, isType, isGeneration = false) => {
+        updateDoc(doc(db, 'games', gameState.online.gameId), { lastAction: { type: 'question', sender: gameState.online.myId, criteria, isType, isGeneration, status: 'pending' } });
     },
     
     handleOnlineActions: (data) => {
         const action = data.lastAction;
         if (!action) return;
+        
+        // 1. Recibir Pregunta
         if (action.sender !== gameState.online.myId && action.status === 'pending') {
             if (!document.getElementById('uiModal').classList.contains('hidden')) return;
-            UI.showQuestionModal(action.criteria, action.isType, (res) => Game.sendResponse(res));
+            UI.showQuestionModal(action.criteria, action.isType, (res) => Game.sendResponse(res), action.isGeneration);
         }
+        
+        // 2. Recibir Respuesta y Aplicar
         if (action.sender === gameState.online.myId && action.status === 'answered') {
             if (!document.getElementById('uiModal').classList.contains('hidden')) return;
+            
             UI.showModal("Respuesta", `Dijo: ${action.response ? "SÍ" : "NO"}`, async () => {
-                await updateDoc(doc(db, 'games', gameState.online.gameId), { lastAction: null });
-                Game.applyFilter(action.criteria, action.isType, action.response);
+                let updates;
+                if (action.isGeneration) {
+                    updates = Game.applyGenerationFilter(action.criteria, action.response, true);
+                } else {
+                    updates = Game.applyFilter(action.criteria, action.isType, action.response, true);
+                }
+                Game.handleEndTurn(updates);
             }, true);
         }
     },
@@ -413,7 +449,7 @@ export const Game = {
         updateDoc(doc(db, 'games', gameState.online.gameId), { lastAction: { ...act, status: 'answered', response: res } });
     },
     
-    applyFilter: (criteria, isType, keep) => {
+    applyFilter: (criteria, isType, keep, getUpdateObj = false) => {
         const toEliminate = [];
         gameState.pokemonList.forEach(p => {
             let matches = false;
@@ -432,6 +468,40 @@ export const Game = {
         } else {
             const role = gameState.online.role === 'host' ? 'player1' : 'player2';
             const next = Array.from(new Set([...(gameState.online.data[role].eliminated || []), ...toEliminate]));
+            
+            if (getUpdateObj) return { [`${role}.eliminated`]: next };
+            
+            updateDoc(doc(db, 'games', gameState.online.gameId), { [`${role}.eliminated`]: next });
+        }
+    },
+
+    applyGenerationFilter: (generations, keep, getUpdateObj = false) => {
+        const toEliminate = [];
+        gameState.pokemonList.forEach(p => {
+            const pokemonGeneration = Object.keys(REGION_RANGES).find(gen => {
+                const [start, end] = REGION_RANGES[gen];
+                return p.id >= start && p.id <= end;
+            });
+
+            let matches = generations.includes(pokemonGeneration);
+            
+            if (keep) {
+                if (!matches) toEliminate.push(p.id);
+            } else {
+                if (matches) toEliminate.push(p.id);
+            }
+        });
+
+        if (gameState.mode === 'local') {
+            const pData = gameState.local.turn === 1 ? gameState.local.p1 : gameState.local.p2;
+            toEliminate.forEach(id => pData.eliminated.add(id));
+            Game.renderLocalBoard();
+        } else {
+            const role = gameState.online.role === 'host' ? 'player1' : 'player2';
+            const next = Array.from(new Set([...(gameState.online.data[role].eliminated || []), ...toEliminate]));
+
+            if (getUpdateObj) return { [`${role}.eliminated`]: next };
+
             updateDoc(doc(db, 'games', gameState.online.gameId), { [`${role}.eliminated`]: next });
         }
     }
