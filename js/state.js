@@ -11,8 +11,8 @@ export const gameState = {
 
     local: {
         turn: 1,
-        p1: { secret: null, eliminated: new Set() },
-        p2: { secret: null, eliminated: new Set() }
+        p1: { pokemon: null, eliminated: new Set() },
+        p2: { pokemon: null, eliminated: new Set() }
     },
     online: {
         gameId: null,
@@ -33,7 +33,7 @@ export const resetGameState = () => {
     gameState.pokemonList = [];
     gameState.config.selectedRegions.clear();
     gameState.config.selectedTypes.clear();
-    gameState.local = { turn: 1, p1: { secret: null, eliminated: new Set() }, p2: { secret: null, eliminated: new Set() } };
+    gameState.local = { turn: 1, p1: { pokemon: null, eliminated: new Set() }, p2: { pokemon: null, eliminated: new Set() } };
     gameState.online.gameId = null;
     gameState.online.role = null;
     gameState.online.data = null;

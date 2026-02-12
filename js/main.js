@@ -9,62 +9,12 @@ const GENERATION_NAMES = {
 };
 
 // --- NUEVO SISTEMA DE CARGA DE DATOS (Soporte Gen 9/Paldea) ---
-const loadPokemonData = async () => {
-    UI.showLoading(true);
-    
-    try {
-        const typesToFetch = Object.keys(typeTranslations);
-        const promises = typesToFetch.map(type => 
-            fetch(`https://pokeapi.co/api/v2/type/${type}`).then(res => res.json())
-        );
-        
-        const results = await Promise.all(promises);
-        const tempMap = new Map();
+import { loadAllPokemon } from './api.js';
 
-        results.forEach(data => {
-            const typeName = data.name; 
-            
-            data.pokemon.forEach(entry => {
-                const p = entry.pokemon;
-                const id = parseInt(p.url.split('/').filter(Boolean).pop());
-                
-                if (id > 1025) return; 
-
-                if (!tempMap.has(id)) {
-                    const formattedName = p.name.split('-')
-                        .map(s => s.charAt(0).toUpperCase() + s.slice(1))
-                        .join(' ');
-
-                    tempMap.set(id, {
-                        id: id,
-                        name: formattedName,
-                        types: [],
-                        image: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`
-                    });
-                }
-                
-                const pokeEntry = tempMap.get(id);
-                if (!pokeEntry.types.includes(typeName)) {
-                    pokeEntry.types.push(typeName);
-                }
-            });
-        });
-
-        gameState.fullPokemonDB = Array.from(tempMap.values()).sort((a, b) => a.id - b.id);
-        
-        console.log(`Base de datos actualizada: ${gameState.fullPokemonDB.length} Pokémon cargados.`);
-        UI.showLoading(false);
-
-    } catch (error) {
-        console.error("Error crítico cargando Pokémon:", error);
-        alert("Hubo un error cargando los datos de Pokémon. Por favor recarga la página.");
-        UI.showLoading(false);
-    }
-};
+// ... (el resto de tus imports)
 
 window.onload = async () => {
     UI.initTheme();
-    await loadPokemonData();
 
     try {
         await signInAnonymously(auth);

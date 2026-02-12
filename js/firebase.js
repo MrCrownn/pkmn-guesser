@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, addDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, addDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyDuXav8x9SYny10CZwnLUvwr_B44GeIets",
@@ -16,4 +16,4 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = 'pokemon-game-main';
 
-export { auth, db, appId, signInAnonymously, onAuthStateChanged, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, addDoc };
+export { auth, db, appId, signInAnonymously, onAuthStateChanged, collection, doc, setDoc, getDoc, updateDoc, onSnapshot, addDoc, runTransaction };

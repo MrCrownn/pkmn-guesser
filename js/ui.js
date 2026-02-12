@@ -42,6 +42,7 @@ const DOM = {
     // HUD y Textos
     get hudSecretImg() { return document.getElementById('hudSecretImg'); },
     get hudSecretName() { return document.getElementById('hudSecretName'); },
+    get hudSecretTypes() { return document.getElementById('hudSecretTypes'); },
     get winnerTitle() { return document.getElementById('winnerTitle'); },
     get winnerSubtitle() { return document.getElementById('winnerSubtitle'); },
     get winnerRevealImg() { return document.getElementById('winnerRevealImg'); },
@@ -137,12 +138,18 @@ export const UI = {
         }
     },
 
-    showQuestionModal: (criteria, isType, onResponse) => {
+    showQuestionModal: (criteria, isType, onResponse, isGeneration = false) => {
         let questionText = "";
-        if (isType) {
+        if (isGeneration) {
+            const genName = criteria[0].charAt(0).toUpperCase() + criteria[0].slice(1);
+            questionText = `¿El Pokémon es de la generación ${genName}?`;
+        } else if (isType) {
             const translatedTypes = criteria.map(t => typeTranslations[t] || t);
-            if (translatedTypes.length === 1) questionText = `¿Tiene el tipo ${translatedTypes[0]}?`;
-            else questionText = `¿Tiene alguno de los tipos: ${translatedTypes.join(' o ')}?`;
+            if (translatedTypes.length === 1) {
+                questionText = `¿Tiene el tipo ${translatedTypes[0]}?`;
+            } else {
+                questionText = `¿Tiene alguno de los tipos: ${translatedTypes.join(' o ')}?`;
+            }
         } else {
             if (criteria[0] === 'single') questionText = "¿Tiene UN solo tipo?";
             else if (criteria[0] === 'dual') questionText = "¿Tiene DOS tipos?";
@@ -239,6 +246,18 @@ export const UI = {
         if (!secret) return;
         DOM.hudSecretImg.src = secret.image;
         DOM.hudSecretName.textContent = secret.name;
+
+        // Render types
+        const typesContainer = document.getElementById('hudSecretTypes');
+        if (typesContainer) {
+            typesContainer.innerHTML = ''; // Limpiar tipos anteriores
+            secret.types.forEach(type => {
+                const typeSpan = document.createElement('span');
+                typeSpan.className = `w-4 h-4 rounded-full t-${type.toLowerCase()} bg-type-filled border border-slate-100 dark:border-slate-700 shadow-sm`;
+                typeSpan.title = typeTranslations[type.toLowerCase()] || type;
+                typesContainer.appendChild(typeSpan);
+            });
+        }
         
         DOM.turnStatus.textContent = isMyTurn ? "TU TURNO" : "ESPERANDO";
         DOM.turnStatus.className = isMyTurn ? "font-black text-sm text-blue-500 animate-pulse" : "font-bold text-sm text-slate-400";
