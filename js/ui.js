@@ -4,7 +4,12 @@ export const typeTranslations = {
     normal: "Normal", fire: "Fuego", water: "Agua", grass: "Planta",
     electric: "Eléctrico", ice: "Hielo", fighting: "Lucha", poison: "Veneno",
     ground: "Tierra", flying: "Volador", psychic: "Psíquico", bug: "Bicho",
-    rock: "Roca", ghost: "Fantasma", dragon: "Dragón", steel: "Acero", fairy: "Hada"
+    rock: "Roca", ghost: "Fantasma", dragon: "Dragón", steel: "Acero", fairy: "Hada",dark: "siniestro"
+};
+
+const GENERATION_NAMES = {
+    kanto: 'Gen 1', johto: 'Gen 2', hoenn: 'Gen 3', sinnoh: 'Gen 4',
+    unova: 'Gen 5', kalos: 'Gen 6', alola: 'Gen 7', galar: 'Gen 8', paldea: 'Gen 9'
 };
 
 const DOM = {
@@ -24,6 +29,7 @@ const DOM = {
     get winnerModal() { return document.getElementById('winnerModal'); },
     get filterModal() { return document.getElementById('filterModal'); },
     get uiModal() { return document.getElementById('uiModal'); },
+    get historyModal() { return document.getElementById('historyModal'); },
     
     // Elementos internos
     get btnOnline() { return document.getElementById('btn-mode-online'); },
@@ -42,10 +48,12 @@ const DOM = {
     // HUD y Textos
     get hudSecretImg() { return document.getElementById('hudSecretImg'); },
     get hudSecretName() { return document.getElementById('hudSecretName'); },
+    get hudSecretTypes() { return document.getElementById('hudSecretTypes'); },
     get winnerTitle() { return document.getElementById('winnerTitle'); },
     get winnerSubtitle() { return document.getElementById('winnerSubtitle'); },
     get winnerRevealImg() { return document.getElementById('winnerRevealImg'); },
     get winnerRevealName() { return document.getElementById('winnerRevealName'); },
+    get winnerRevealTypes() { return document.getElementById('winnerRevealTypes'); },
     
     // UI Modal Elementos
     get uiModalTitle() { return document.getElementById('uiModalTitle'); },
@@ -53,7 +61,11 @@ const DOM = {
     get uiModalConfirm() { return document.getElementById('uiModalConfirm'); },
     get uiModalCancel() { return document.getElementById('uiModalCancel'); },
     
-    // Botones de acción
+    // Historial
+    get historyList() { return document.getElementById('historyList'); },
+    get emptyHistory() { return document.getElementById('emptyHistory'); },
+    
+    // Botones
     get guessBtn() { return document.getElementById('btn-open-guess'); },
     get askTypesBtn() { return document.getElementById('askTypesBtn'); },
     get visibilityBtn() { return document.getElementById('btn-visibility'); },
@@ -62,7 +74,8 @@ const DOM = {
     // Overlays
     get guessModalOverlay() { return document.getElementById('guessModalOverlay'); },
     get filterModalOverlay() { return document.getElementById('filterModalOverlay'); },
-    get uiModalOverlay() { return document.getElementById('uiModalOverlay'); }
+    get uiModalOverlay() { return document.getElementById('uiModalOverlay'); },
+    get historyModalOverlay() { return document.getElementById('historyModalOverlay'); }
 };
 
 export const UI = {
@@ -78,64 +91,135 @@ export const UI = {
         if (!DOM.btnOnline) return;
         if (connected) {
             DOM.btnOnline.classList.remove('opacity-50', 'cursor-not-allowed');
-            DOM.connectionStatus.textContent = "● Conectado";
-            DOM.connectionStatus.style.color = "green";
+            DOM.btnOnline.disabled = false;
+            if(DOM.connectionStatus) {
+                DOM.connectionStatus.textContent = "● Conectado";
+                DOM.connectionStatus.className = "mb-4 text-xs font-bold text-green-500";
+            }
         } else {
-            DOM.connectionStatus.textContent = "Offline";
-            DOM.connectionStatus.style.color = "red";
+            if(DOM.connectionStatus) {
+                DOM.connectionStatus.textContent = "Offline";
+                DOM.connectionStatus.className = "mb-4 text-xs font-bold text-red-500";
+            }
         }
+    },
+
+    // --- FUNCIÓN FALTANTE: SHOW EMOTE TOAST ---
+    showEmoteToast: (emoji, isMine = false) => {
+        const container = document.getElementById('gameBoardScreen');
+        if (!container) return;
+        
+        const toast = document.createElement('div');
+        toast.textContent = emoji;
+        toast.className = `fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-8xl z-[90] animate-bounce pointer-events-none drop-shadow-2xl transition-opacity duration-1000`;
+        
+        if (isMine) {
+            toast.className = `fixed bottom-24 right-4 text-4xl z-[90] animate-pulse pointer-events-none`;
+        }
+
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.classList.add('opacity-0');
+            setTimeout(() => toast.remove(), 1000);
+        }, 1500);
+    },
+
+    // --- RENDERIZADO DEL HISTORIAL ---
+    renderHistory: (historyItems) => {
+        if (!DOM.historyList) return;
+        DOM.historyList.innerHTML = '';
+        
+        if (!historyItems || historyItems.length === 0) {
+            if(DOM.emptyHistory) DOM.emptyHistory.classList.remove('hidden');
+            return;
+        } else {
+            if(DOM.emptyHistory) DOM.emptyHistory.classList.add('hidden');
+        }
+
+        const itemsToShow = [...historyItems].reverse(); 
+
+        itemsToShow.forEach(item => {
+            const li = document.createElement('li');
+            li.className = "p-3 bg-slate-100 dark:bg-slate-800 rounded-xl flex justify-between items-center";
+            
+            const answerClass = item.answer 
+                ? "text-green-600 bg-green-100 dark:bg-green-900/30" 
+                : "text-red-600 bg-red-100 dark:bg-red-900/30";
+            
+            const answerText = item.answer ? "SÍ" : "NO";
+
+            li.innerHTML = `
+                <div>
+                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">${item.turn || 'Rival'}</div>
+                    <div class="font-bold text-sm text-slate-700 dark:text-slate-200">${item.question}</div>
+                </div>
+                <div class="px-3 py-1 rounded-lg font-black text-xs ${answerClass}">
+                    ${answerText}
+                </div>
+            `;
+            DOM.historyList.appendChild(li);
+        });
     },
 
     showModal: (title, text, onConfirm, isAlert = false) => {
-        DOM.uiModalTitle.textContent = title;
-        DOM.uiModalText.textContent = text;
+        if(DOM.uiModalTitle) DOM.uiModalTitle.textContent = title;
+        if(DOM.uiModalText) DOM.uiModalText.innerText = text; 
         DOM.uiModal.classList.remove('hidden');
         
-        const oldConfirm = DOM.uiModalConfirm;
-        const oldCancel = DOM.uiModalCancel;
-        
+        const oldConfirm = document.getElementById('uiModalConfirm');
+        const oldCancel = document.getElementById('uiModalCancel');
         const newConfirm = oldConfirm.cloneNode(true);
         const newCancel = oldCancel.cloneNode(true);
-        
-        // Reemplazamos en el DOM. El ID se mantiene.
         oldConfirm.parentNode.replaceChild(newConfirm, oldConfirm);
         oldCancel.parentNode.replaceChild(newCancel, oldCancel);
-        
+
+        const btnConfirm = document.getElementById('uiModalConfirm');
+        const btnCancel = document.getElementById('uiModalCancel');
+
+        btnCancel.classList.remove('hidden');
+
         if (isAlert) {
-            newCancel.classList.add('hidden');
-            newConfirm.textContent = "OK";
-            newConfirm.className = "w-full py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all";
+            btnCancel.classList.add('hidden');
+            btnConfirm.textContent = "Aceptar";
+            btnConfirm.className = "bg-blue-500 text-white w-full py-3 rounded-xl font-bold";
             
-            newConfirm.onclick = () => {
+            btnConfirm.onclick = () => {
                  DOM.uiModal.classList.add('hidden');
                  if(onConfirm) onConfirm();
             };
         } else {
-            newCancel.classList.remove('hidden');
-            newConfirm.textContent = "Confirmar";
-            newConfirm.className = "flex-1 py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all";
-            newCancel.className = "flex-1 py-3 rounded-xl font-bold text-slate-500 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all";
+            btnConfirm.textContent = "Confirmar";
+            btnCancel.textContent = "Cancelar";
+            
+            btnConfirm.className = "bg-blue-500 text-white py-3 rounded-xl font-bold flex-1";
+            btnCancel.className = "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white py-3 rounded-xl font-bold flex-1";
 
-            newConfirm.onclick = () => {
+            btnConfirm.onclick = () => {
                  DOM.uiModal.classList.add('hidden');
                  if(onConfirm) onConfirm();
             };
-            newCancel.onclick = () => DOM.uiModal.classList.add('hidden');
+            
+            btnCancel.onclick = () => {
+                DOM.uiModal.classList.add('hidden');
+            };
         }
     },
 
-    showQuestionModal: (criteria, isType, onResponse) => {
+    showQuestionModal: (criteria, isType, onResponse, isGeneration = false) => {
         let questionText = "";
-        
-        // --- LÓGICA DE TEXTO PARA PREGUNTAS ---
-        if (isType) {
-            // Preguntas de TIPOS (Fuego, Agua...)
+        if (isGeneration) {
+            const genNames = criteria.map(g => GENERATION_NAMES[g] || g).join(', ');
+            questionText = criteria.length === 1 
+                ? `¿Pertenece a ${genNames}?`
+                : `¿Pertenece a una de estas generaciones: ${genNames}?`;
+        } else if (isType) {
             const translatedTypes = criteria.map(t => typeTranslations[t] || t);
-            if (translatedTypes.length === 1) questionText = `¿Tiene el tipo ${translatedTypes[0]}?`;
-            else questionText = `¿Tiene alguno de los tipos: ${translatedTypes.join(' o ')}?`;
+            if (translatedTypes.length === 1) {
+                questionText = `¿Tiene el tipo ${translatedTypes[0]}?`;
+            } else {
+                questionText = `¿Tiene alguno de los tipos: ${translatedTypes.join(' o ')}?`;
+            }
         } else {
-            // Preguntas de ESTRUCTURA (1 tipo o 2 tipos)
-            // Aquí aseguramos que el texto sea claro para el oponente
             if (criteria[0] === 'single') questionText = "¿Tiene UN solo tipo?";
             else if (criteria[0] === 'dual') questionText = "¿Tiene DOS tipos?";
         }
@@ -144,27 +228,27 @@ export const UI = {
         DOM.uiModalText.textContent = questionText;
         DOM.uiModal.classList.remove('hidden');
         
-        const oldConfirm = DOM.uiModalConfirm;
-        const oldCancel = DOM.uiModalCancel;
+        const oldConfirm = document.getElementById('uiModalConfirm');
+        const oldCancel = document.getElementById('uiModalCancel');
         const newConfirm = oldConfirm.cloneNode(true);
         const newCancel = oldCancel.cloneNode(true);
-        
         oldConfirm.parentNode.replaceChild(newConfirm, oldConfirm);
         oldCancel.parentNode.replaceChild(newCancel, oldCancel);
 
-        // Botones SÍ / NO para responder
-        newConfirm.textContent = "SÍ";
-        newConfirm.className = "flex-1 py-3 rounded-xl font-bold text-white bg-green-600 hover:bg-green-700 shadow-lg transition-all";
-        
-        newCancel.textContent = "NO";
-        newCancel.className = "flex-1 py-3 rounded-xl font-bold text-white bg-red-500 hover:bg-red-600 shadow-lg transition-all";
-        newCancel.classList.remove('hidden');
+        const btnConfirm = document.getElementById('uiModalConfirm');
+        const btnCancel = document.getElementById('uiModalCancel');
 
-        newConfirm.onclick = () => {
+        btnConfirm.textContent = "SÍ";
+        btnConfirm.className = "bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl flex-1"; 
+        btnConfirm.onclick = () => {
              DOM.uiModal.classList.add('hidden');
              onResponse(true);
         };
-        newCancel.onclick = () => {
+
+        btnCancel.textContent = "NO";
+        btnCancel.className = "bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl flex-1"; 
+        btnCancel.classList.remove('hidden');
+        btnCancel.onclick = () => {
             DOM.uiModal.classList.add('hidden');
             onResponse(false);
         };
@@ -175,44 +259,93 @@ export const UI = {
     renderGrid: (container, list, onClick, eliminatedSet = new Set()) => {
         if (!container || !Array.isArray(list)) return;
         container.innerHTML = '';
+        
+        const fragment = document.createDocumentFragment();
+        const isGuessModal = container.id === 'guessGrid';
+
         list.forEach(poke => {
             const isEliminated = eliminatedSet.has(poke.id);
             if (gameState.hideEliminated && isEliminated) return;
 
             const div = document.createElement('div');
-            div.className = `card relative bg-white dark:bg-slate-800 rounded-xl p-1 shadow-sm border border-slate-100 dark:border-slate-700 ${isEliminated ? 'eliminated' : 'cursor-pointer hover:scale-105'}`;
-            div.classList.add(`t-${poke.types[0]}`, 'card-border');
             
+            if (isGuessModal) {
+                div.className = `relative rounded-xl p-2 border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-between transition-all select-none
+                    ${isEliminated ? 'opacity-25 grayscale bg-slate-100 dark:bg-slate-900' : 'bg-white dark:bg-slate-800 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700'}`;
+            } else {
+                div.className = `card relative rounded-xl p-1 shadow-sm ${isEliminated ? 'eliminated' : 'cursor-pointer hover:scale-105'}`;
+                div.classList.add(`t-${poke.types[0].toLowerCase()}`); 
+                div.classList.add('card-border');
+            }
+
             const typesHtml = poke.types.map(t => 
-                `<span class="inline-block w-4 h-4 rounded-full t-${t} type-badge border border-slate-100 dark:border-slate-700 shadow-sm" title="${typeTranslations[t] || t}"></span>`
+                `<span class="w-3 h-3 rounded-full t-${t.toLowerCase()} bg-type-filled border border-slate-100 dark:border-slate-700 shadow-sm" title="${typeTranslations[t] || t}"></span>`
             ).join('');
 
-            div.innerHTML = `
-                <img src="${poke.image}" class="w-full aspect-square object-contain bg-slate-50 dark:bg-slate-900 rounded-lg mb-1" loading="lazy">
-                <div class="text-center text-[10px] sm:text-xs font-bold truncate px-1 text-slate-700 dark:text-slate-200">${poke.name}</div>
-                <div class="flex justify-center gap-1 mt-1 pb-1">${typesHtml}</div>
-            `;
+            if (isGuessModal) {
+                 div.innerHTML = `
+                    <img src="${poke.image}" class="w-16 h-16 object-contain mb-1 pointer-events-none" loading="lazy">
+                    <div class="text-[10px] font-bold truncate w-full text-center text-slate-700 dark:text-slate-200 pointer-events-none">${poke.name}</div>
+                    <div class="flex justify-center gap-1 mt-1 pointer-events-none">${typesHtml}</div>
+                `;
+            } else {
+                div.innerHTML = `
+                    <img src="${poke.image}" class="w-full aspect-square object-contain bg-slate-50 dark:bg-slate-900 rounded-lg mb-1" loading="lazy">
+                    <div class="text-center text-[10px] sm:text-xs font-bold truncate px-1 text-slate-700 dark:text-slate-200">${poke.name}</div>
+                    <div class="flex justify-center gap-1 mt-1 pb-1">${typesHtml}</div>
+                `;
+            }
             
             div.onclick = (e) => { e.stopPropagation(); onClick(poke); };
-            container.appendChild(div);
+            fragment.appendChild(div);
         });
+        
+        container.appendChild(fragment);
     },
 
     updateHUD: (secret, isMyTurn) => {
         if (!secret) return;
         DOM.hudSecretImg.src = secret.image;
         DOM.hudSecretName.textContent = secret.name;
+
+        const typesContainer = document.getElementById('hudSecretTypes');
+        if (typesContainer) {
+            typesContainer.innerHTML = '';
+            secret.types.forEach(type => {
+                const typeSpan = document.createElement('span');
+                typeSpan.className = `px-1.5 py-0.5 rounded text-[10px] font-bold uppercase text-white shadow-sm t-${type.toLowerCase()} bg-type-filled`;
+                typeSpan.textContent = typeTranslations[type.toLowerCase()] || type;
+                typesContainer.appendChild(typeSpan);
+            });
+        }
+        
         DOM.turnStatus.textContent = isMyTurn ? "TU TURNO" : "ESPERANDO";
-        DOM.turnStatus.className = isMyTurn ? "font-black text-sm text-poke-blue dark:text-blue-400 animate-pulse" : "font-bold text-sm text-slate-400 dark:text-slate-500";
+        DOM.turnStatus.className = isMyTurn ? "font-black text-sm text-blue-500 animate-pulse" : "font-bold text-sm text-slate-400";
     },
 
     showWinner: (isMeWinner, oppSecret) => {
-        DOM.winnerTitle.textContent = isMeWinner ? "¡GANASTE!" : "DERROTA";
-        DOM.winnerTitle.className = isMeWinner ? "text-4xl font-black mb-2 text-green-500" : "text-4xl font-black mb-2 text-red-500";
-        DOM.winnerSubtitle.textContent = isMeWinner ? "¡Adivinaste correctamente!" : "Tu rival ganó la partida";
+        if(DOM.winnerTitle) {
+            DOM.winnerTitle.textContent = isMeWinner ? "¡GANASTE!" : "DERROTA";
+            DOM.winnerTitle.className = isMeWinner ? "text-3xl font-black mb-2 text-green-500" : "text-3xl font-black mb-2 text-red-500";
+        }
+        
+        if(DOM.winnerSubtitle) {
+            DOM.winnerSubtitle.textContent = isMeWinner ? "¡Adivinaste correctamente!" : "Tu rival ganó la partida";
+        }
+        
         if (oppSecret) {
-            DOM.winnerRevealImg.src = oppSecret.image;
-            DOM.winnerRevealName.textContent = oppSecret.name;
+            if(DOM.winnerRevealImg) DOM.winnerRevealImg.src = oppSecret.image;
+            if(DOM.winnerRevealName) DOM.winnerRevealName.textContent = oppSecret.name;
+            
+            if(DOM.winnerRevealTypes) {
+                DOM.winnerRevealTypes.innerHTML = '';
+                oppSecret.types.forEach(type => {
+                    const typeSpan = document.createElement('span');
+                    typeSpan.className = `px-2 py-1 rounded text-xs font-bold uppercase text-white shadow-sm t-${type.toLowerCase()} bg-type-filled`;
+                    typeSpan.textContent = typeTranslations[type.toLowerCase()] || type;
+                    DOM.winnerRevealTypes.appendChild(typeSpan);
+                });
+            }
         }
         DOM.winnerModal.classList.remove('hidden');
     },
@@ -220,9 +353,11 @@ export const UI = {
     updateVisibilityBtn: () => {
         if (!DOM.visibilityBtn) return;
         if (gameState.hideEliminated) {
-            DOM.visibilityBtn.classList.add('bg-blue-100', 'text-blue-600', 'dark:bg-blue-900/50', 'dark:text-blue-300');
+            DOM.visibilityBtn.classList.add('bg-blue-100', 'text-blue-600', 'border-blue-300');
+            DOM.visibilityBtn.classList.remove('bg-slate-100', 'dark:bg-slate-800');
         } else {
-            DOM.visibilityBtn.classList.remove('bg-blue-100', 'text-blue-600', 'dark:bg-blue-900/50', 'dark:text-blue-300');
+            DOM.visibilityBtn.classList.remove('bg-blue-100', 'text-blue-600', 'border-blue-300');
+            DOM.visibilityBtn.classList.add('bg-slate-100', 'dark:bg-slate-800');
         }
     },
 
@@ -230,13 +365,11 @@ export const UI = {
         if (!DOM.askTypesBtn) return;
         if (count > 0) {
             DOM.askTypesBtn.disabled = false;
-            DOM.askTypesBtn.classList.remove('bg-slate-300', 'cursor-not-allowed', 'dark:bg-slate-700');
-            DOM.askTypesBtn.classList.add('bg-blue-600', 'hover:bg-blue-700', 'shadow-lg');
+            DOM.askTypesBtn.classList.remove('opacity-50', 'cursor-not-allowed');
             DOM.askTypesBtn.textContent = `Preguntar por ${count} Tipo${count > 1 ? 's' : ''}`;
         } else {
             DOM.askTypesBtn.disabled = true;
-            DOM.askTypesBtn.classList.add('bg-slate-300', 'cursor-not-allowed', 'dark:bg-slate-700');
-            DOM.askTypesBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700', 'shadow-lg');
+            DOM.askTypesBtn.classList.add('opacity-50', 'cursor-not-allowed');
             DOM.askTypesBtn.textContent = "Selecciona tipos primero";
         }
     },
@@ -276,10 +409,14 @@ export const UI = {
         DOM.interstitialScreen.classList.add('hidden');
         DOM.filterModal.classList.add('hidden');
         DOM.roomCodeDisplay.classList.add('hidden');
+        DOM.guessModal.classList.add('hidden');
+        DOM.historyModal.classList.add('hidden'); 
         
         DOM.modeScreen.classList.remove('hidden');
         
-        if (DOM.visibilityBtn) DOM.visibilityBtn.classList.remove('bg-blue-100', 'text-blue-600', 'dark:bg-blue-900/50', 'dark:text-blue-300');
+        if (DOM.visibilityBtn) {
+            DOM.visibilityBtn.classList.remove('bg-blue-100', 'text-blue-600');
+        }
         if (DOM.guessBtn) DOM.guessBtn.classList.remove('opacity-50', 'cursor-not-allowed');
     }
 };

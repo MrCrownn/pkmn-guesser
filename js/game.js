@@ -1,566 +1,754 @@
+// --- CORRECCIÓN IMPORT: Agregado arrayUnion que faltaba ---
+import { db, doc, updateDoc, onSnapshot, getDoc, collection, addDoc, setDoc, runTransaction, arrayUnion } from './firebase.js';
 import { gameState, resetGameState } from './state.js';
-import { UI } from './ui.js';
-import { db, appId, doc, updateDoc, collection, setDoc, getDoc, onSnapshot, auth } from './firebase.js';
-import { loadPokemonData } from './api.js';
+import { UI, typeTranslations } from './ui.js';
 
-let unsubscribeGame = null;
-const SESSION_TIMEOUT = 60 * 60 * 1000; 
+export const REGION_RANGES = {
+    kanto: 'kanto',
+    johto: 'original-johto',
+    hoenn: 'hoenn',
+    sinnoh: 'original-sinnoh',
+    unova: 'original-unova',
+    kalos: 'kalos-central',
+    alola: 'updated-alola',
+    galar: ['galar', 'isle-of-armor', 'crown-tundra', 'hisui'],
+    paldea: 'paldea'
+};
+
+const GENERATION_NAMES = {
+    kanto: 'Gen 1', johto: 'Gen 2', hoenn: 'Gen 3', sinnoh: 'Gen 4',
+    unova: 'Gen 5', kalos: 'Gen 6', alola: 'Gen 7', galar: 'Gen 8', paldea: 'Gen 9'
+};
+
+import { loadAllPokemon } from './api.js';
 
 export const Game = {
-    
-    // --- MODO LOCAL ---
-    startLocalGame: (start, end) => {
-        UI.showLoading(true);
-        UI.elements.setupScreen.classList.add('hidden');
-        
-        loadPokemonData({start, end}, (list) => {
-            gameState.pokemonList = list;
-            UI.showLoading(false);
-            Game.startLocalSelection(1);
-        }, (err) => {
-            UI.showLoading(false);
-            UI.elements.setupScreen.classList.remove('hidden');
-            UI.showModal("Error", "Error al cargar datos de Pokémon", null, true);
-        });
-    },
+    unsub: null,
+    isLoadingPokemon: false,
+    loadedRegions: null,
 
-    // --- MODO ONLINE: Crear Sala ---
-    createOnlineRoom: async () => {
-        if (!auth.currentUser) return UI.showModal("Error", "No conectado", null, true);
-        
-        UI.showLoading(true);
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
-        
-        // CORRECCIÓN IMPORTANTE: Actualizar la URL del Host también para no perder la sesión si recarga
-        history.pushState(null, null, `#game=${code}`);
-        
-        const gameDoc = {
-            createdAt: new Date(),
-            lastActivity: Date.now(),
-            hostId: auth.currentUser.uid,
-            region: null,
-            status: 'waiting_for_guest',
-            turn: auth.currentUser.uid,
-            winner: null,
-            interaction: null,
-            player1: { id: auth.currentUser.uid, secret: null, eliminated: [] },
-            player2: { id: null, secret: null, eliminated: [] }
-        };
-        
-        try {
-            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', code), gameDoc);
-            // Ya no seteamos el rol manual aquí, dejamos que joinGame lo maneje para ser consistentes
-            Game.joinGame(code); 
-        } catch (e) {
-            UI.showLoading(false);
-            UI.showModal("Error", "No se pudo crear la sala", null, true);
-        }
-    },
-
-    // --- MODO ONLINE: Unirse/Reconectar ---
-    joinGame: async (code) => {
-        UI.elements.lobbyScreen.classList.add('hidden');
-        UI.showLoading(true);
-        
-        try {
-            const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', code);
-            const snap = await getDoc(gameRef);
-            
-            if (!snap.exists()) {
-                UI.showLoading(false);
-                UI.elements.lobbyScreen.classList.remove('hidden');
-                return UI.showModal("Error", "Sala no encontrada", null, true);
-            }
-            
-            let data = snap.data();
-            const uid = auth.currentUser.uid;
-            
-            // 1. DETECCIÓN ROBUSTA DE ROL
-            // Si soy el hostId, soy Host. Si soy player2, soy Guest. Si no, intento ser Guest.
-            if (data.hostId === uid) {
-                gameState.online.role = 'host';
-            } else if (data.player2.id === uid) {
-                gameState.online.role = 'guest';
-            } else if (!data.player2.id) {
-                // Hueco libre, lo tomo
-                gameState.online.role = 'guest';
-                await updateDoc(gameRef, { 
-                    'player2.id': uid, 
-                    status: 'selecting_region', 
-                    lastActivity: Date.now() 
-                });
-            } else {
-                // Sala llena y no soy ninguno de los dos
-                // Chequeo de expiración (Reciclaje de sala)
-                const now = Date.now();
-                if ((now - (data.lastActivity || 0)) > SESSION_TIMEOUT) {
-                    // Reciclar sala
-                    const recycledDoc = {
-                        createdAt: new Date(), lastActivity: now, hostId: uid, region: null, status: 'waiting_for_guest',
-                        turn: uid, winner: null, interaction: null,
-                        player1: { id: uid, secret: null, eliminated: [] }, player2: { id: null, secret: null, eliminated: [] }
-                    };
-                    await setDoc(gameRef, recycledDoc);
-                    gameState.online.role = 'host';
-                    // Continuamos al subscribe...
-                } else {
-                    UI.showLoading(false);
-                    UI.elements.lobbyScreen.classList.remove('hidden');
-                    return UI.showModal("Error", "La sala está llena", null, true);
-                }
-            }
-            
-            gameState.online.gameId = code;
-            
-            // Mostrar código en pantalla
-            UI.elements.waitingCode.textContent = code;
-            UI.elements.roomCodeDisplay.textContent = `CODE: ${code}`;
-            UI.elements.roomCodeDisplay.classList.remove('hidden');
-
-            // Cargar datos si la partida ya estaba en curso (Reconexión)
-            if (data.region) {
-                 loadPokemonData(data.region, (list) => {
-                    gameState.pokemonList = list;
-                    Game.subscribeToGame(code);
-                }, (err) => { throw err; });
-            } else {
-                Game.subscribeToGame(code);
-            }
-            
-        } catch (err) {
-            console.error(err);
-            UI.showLoading(false);
-            UI.elements.lobbyScreen.classList.remove('hidden');
-            UI.showModal("Error", "Error al unirse", null, true);
-        }
-    },
-
-    setOnlineRegion: async (start, end, regionName) => {
-        UI.showLoading(true);
-        try {
-            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), {
-                region: { start, end, name: regionName },
-                status: 'selecting_pokemon',
-                lastActivity: Date.now()
-            });
-        } catch (e) {
-            UI.showLoading(false);
-            UI.showModal("Error", "No se pudo establecer la región", null, true);
-        }
-    },
-
-    sendQuestion: async (criteria, isType) => {
-        try {
-            UI.showLoading(true);
-            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), {
-                interaction: {
-                    type: 'question',
-                    criteria: criteria,
-                    isType: isType,
-                    status: 'waiting_response',
-                    asker: auth.currentUser.uid
-                },
-                lastActivity: Date.now()
-            });
-        } catch (e) {
-            UI.showLoading(false);
-            UI.showModal("Error", "No se pudo enviar la pregunta", null, true);
-        }
-    },
-
-    answerQuestion: async (response) => {
-        try {
-            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), {
-                "interaction.status": 'answered',
-                "interaction.response": response,
-                lastActivity: Date.now()
-            });
-        } catch (e) {
-            UI.showModal("Error", "No se pudo enviar respuesta", null, true);
-        }
-    },
-
-    subscribeToGame: (code) => {
-        unsubscribeGame = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'games', code), async (docSnap) => {
-            if (!docSnap.exists()) return;
-            const data = docSnap.data();
-            gameState.online.data = data;
-            
-            // Asegurarnos que el rol esté definido, por si acaso
-            if (!gameState.online.role) {
-                if (data.hostId === auth.currentUser.uid) gameState.online.role = 'host';
-                else if (data.player2.id === auth.currentUser.uid) gameState.online.role = 'guest';
-            }
-
-            const myRole = gameState.online.role === 'host' ? 'player1' : 'player2';
-            const interaction = data.interaction;
-
-            // --- INTERACCIÓN ---
-            if (interaction && interaction.status === 'waiting_response' && interaction.asker !== auth.currentUser.uid) {
-                UI.showQuestionModal(interaction.criteria, interaction.isType, (answer) => Game.answerQuestion(answer));
-                return;
-            }
-            if (interaction && interaction.status === 'answered' && interaction.asker === auth.currentUser.uid) {
-                UI.showLoading(false);
-                
-                // Lógica local antes de enviar a DB para evitar parpadeo
-                let toEliminate = [];
-                gameState.pokemonList.forEach(p => {
-                    let match = false;
-                    if (interaction.isType) match = interaction.criteria.some(type => p.types.includes(type));
-                    else {
-                        if (interaction.criteria[0] === 'single') match = p.types.length === 1;
-                        else if (interaction.criteria[0] === 'dual') match = p.types.length === 2;
+    loadPokemon: () => {
+        return new Promise(async (resolve) => {
+            if (Game.isLoadingPokemon) {
+                const checkLoading = setInterval(() => {
+                    if (!Game.isLoadingPokemon) {
+                        clearInterval(checkLoading);
+                        resolve();
                     }
-                    if (interaction.response && !match) toEliminate.push(p.id);
-                    if (!interaction.response && match) toEliminate.push(p.id);
-                });
-
-                const currentElim = data[myRole].eliminated || [];
-                const newElim = [...new Set([...currentElim, ...toEliminate])];
-                const nextTurnId = data.turn === data.player1.id ? data.player2.id : data.player1.id;
-
-                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', code), { 
-                    [`${myRole}.eliminated`]: newElim,
-                    turn: nextTurnId,
-                    interaction: null,
-                    lastActivity: Date.now()
-                });
+                }, 100);
                 return;
             }
-            if (interaction && interaction.status === 'waiting_response' && interaction.asker === auth.currentUser.uid) {
-                UI.showLoading(true);
-            } else if (!interaction && data.status === 'playing') {
-                 UI.showLoading(false);
-            }
-
-            // --- ESTADOS ---
-            if (data.status === 'waiting_for_guest') {
-                UI.showLoading(false);
-                UI.elements.waitingScreen.classList.remove('hidden');
+    
+            const regions = Array.from(gameState.config.selectedRegions);
+            if (regions.length === 0) {
+                gameState.fullPokemonDB = [];
+                resolve();
                 return;
             }
-            if (data.status === 'selecting_region') {
-                UI.showLoading(false);
-                UI.elements.waitingScreen.classList.add('hidden');
-                UI.elements.winnerModal.classList.add('hidden');
-                UI.elements.gameBoardScreen.classList.add('hidden');
-                UI.elements.setupScreen.classList.remove('hidden');
-                return;
-            }
-            if (data.status === 'selecting_pokemon') {
-                UI.elements.setupScreen.classList.add('hidden');
-                const currentRegionId = `${data.region.start}-${data.region.end}`;
+    
+            Game.isLoadingPokemon = true;
+    
+            const pokedexNames = regions.map(r => REGION_RANGES[r]).flat();
+            
+            const onComplete = (pokemonList) => {
+                const uniquePokemon = Array.from(new Map(pokemonList.map(p => [p.id, p])).values());
+                uniquePokemon.sort((a, b) => a.id - b.id);
                 
-                if (!gameState.pokemonList.length || gameState.loadedRegionId !== currentRegionId) {
-                    UI.showLoading(true);
-                    loadPokemonData(data.region, (list) => {
-                        gameState.pokemonList = list;
-                        gameState.loadedRegionId = currentRegionId;
-                        UI.showLoading(false);
-                        checkSelectionState(data, myRole);
-                    }, () => UI.showModal("Error", "Fallo al cargar datos", null, true));
-                } else {
-                    checkSelectionState(data, myRole);
+                gameState.fullPokemonDB = uniquePokemon;
+                Game.loadedRegions = new Set(regions);
+                Game.isLoadingPokemon = false;
+                resolve(); 
+            };
+            
+            const onProgress = (pokedexName, current, total) => {
+                const loadingText = document.querySelector("#loadingScreen p");
+                if (loadingText) {
+                    loadingText.textContent = `Cargando ${pokedexName}... (${current}/${total})`;
                 }
-            }
-            if (data.status === 'playing') {
-                handlePlayingState(data, myRole);
-            }
-            if (data.winner) {
-                const isMeWinner = data.winner === auth.currentUser.uid;
-                const oppRole = gameState.online.role === 'host' ? 'player2' : 'player1';
-                const oppSecret = data[oppRole].secret;
-                UI.showWinner(isMeWinner, oppSecret);
-            }
+            };
+    
+            await loadAllPokemon(pokedexNames, onProgress, onComplete);
         });
     },
 
-    triggerRematch: async () => {
-        if (gameState.mode === 'local') {
-            resetGameState();
-            UI.resetViews();
-            UI.elements.setupScreen.classList.remove('hidden');
-            return;
-        }
-        const gameRef = doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId);
-        try {
-            await updateDoc(gameRef, {
-                status: 'selecting_region',
-                region: null,
-                winner: null,
-                interaction: null,
-                turn: gameState.online.data.hostId,
-                'player1.secret': null,
-                'player1.eliminated': [],
-                'player2.secret': null,
-                'player2.eliminated': [],
-                lastActivity: Date.now()
-            });
-            UI.elements.winnerModal.classList.add('hidden');
-        } catch (e) {
-            UI.showModal("Error", "No se pudo reiniciar.", null, true);
-        }
-    },
+    resetGame: () => {
+        if (gameState.mode === 'online' && gameState.online.gameId) {
+            Game.resetOnlineGame();
+        } else {
+            if (Game.unsub) {
+                Game.unsub();
+                Game.unsub = null;
+            }
 
-    startLocalSelection: (player) => {
-        UI.elements.selectionScreen.classList.remove('hidden');
-        const title = UI.elements.selectionScreen.querySelector('h2');
-        title.textContent = `Jugador ${player}: Elige Personaje`;
-        
-        UI.renderGrid(UI.elements.selectionGrid, gameState.pokemonList, (poke) => {
-            UI.showModal(`¿Elegir a ${poke.name}?`, "Será tu personaje secreto.", () => {
-                if (player === 1) {
-                    gameState.local.p1.secret = poke;
-                    UI.elements.selectionScreen.scrollTo(0,0);
-                    Game.startLocalSelection(2);
-                } else {
-                    gameState.local.p2.secret = poke;
-                    UI.elements.selectionScreen.classList.add('hidden');
-                    Game.startLocalTurn(1);
-                }
-            });
-        });
-    },
-
-    startOnlineSelection: () => {
-        UI.elements.selectionScreen.classList.remove('hidden');
-        UI.renderGrid(UI.elements.selectionGrid, gameState.pokemonList, (poke) => {
-            UI.showModal(`¿Elegir a ${poke.name}?`, "Será tu personaje secreto.", async () => {
-                UI.elements.selectionScreen.classList.add('hidden');
-                UI.showLoading(true);
-                const field = gameState.online.role === 'host' ? 'player1.secret' : 'player2.secret';
+            if (window.location.hash || window.location.search) {
                 try {
-                    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
-                        [field]: poke,
-                        lastActivity: Date.now() 
-                    });
-                } catch(e) {
-                    UI.showModal("Error", "Error al guardar.", null, true);
-                    UI.elements.selectionScreen.classList.remove('hidden');
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                } catch (e) {
+                    console.log("No se pudo limpiar URL", e);
                 }
+            }
+
+            resetGameState();
+            Game.loadedRegions = null;
+            
+            UI.elements.winnerModal.classList.add('hidden');
+            UI.elements.gameBoardScreen.classList.add('hidden');
+            UI.elements.historyModal.classList.add('hidden');
+            
+            const emoteBar = document.getElementById('emote-bar');
+            if(emoteBar) emoteBar.classList.add('hidden');
+            
+            Game.initSetupUI(); 
+
+            if (UI.elements.selectionGrid) UI.elements.selectionGrid.innerHTML = '';
+            if (UI.elements.mainGrid) UI.elements.mainGrid.innerHTML = '';
+            if (UI.elements.guessGrid) UI.elements.guessGrid.innerHTML = '';
+
+            document.querySelectorAll('.region-btn').forEach(btn => {
+                btn.classList.add('opacity-50', 'bg-slate-100', 'dark:bg-slate-800');
+                btn.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-50', 'dark:bg-blue-900/40', 'opacity-100');
             });
+            document.querySelectorAll('#setup-type-grid button').forEach(btn => {
+                btn.classList.add('opacity-50');
+                btn.classList.remove('ring-2', 'ring-white', 'scale-105', 'opacity-100');
+            });
+        }
+    },
+
+    resetOnlineGame: async () => {
+        if (!gameState.online.gameId) return;
+
+        UI.showLoading(true);
+        try {
+            await updateDoc(doc(db, 'games', gameState.online.gameId), {
+                phase: 'lobby',
+                turn: null,
+                "player1.pokemon": null,
+                "player1.eliminated": [],
+                "player2.pokemon": null,
+                "player2.eliminated": [],
+                lastAction: null,
+                lastEmote: null,
+                history: [],
+                config: null
+            });
+
+            UI.elements.winnerModal.classList.add('hidden');
+            UI.elements.gameBoardScreen.classList.add('hidden');
+            
+        } catch (error) {
+            console.error("Error al reiniciar la partida online:", error);
+            UI.resetViews(); 
+        } finally {
+            UI.showLoading(false);
+        }
+    },
+
+    selectMode: (mode) => {
+        gameState.mode = mode;
+        UI.elements.modeScreen.classList.add('hidden');
+        if (mode === 'local') {
+            Game.initSetupUI();
+        } else {
+            UI.elements.lobbyScreen.classList.remove('hidden');
+        }
+    },
+
+    initSetupUI: () => {
+        UI.elements.setupScreen.classList.remove('hidden');
+        const container = document.getElementById('setup-type-grid');
+        if (container && container.children.length === 0) {
+            Object.keys(typeTranslations).forEach(type => {
+                const btn = document.createElement('button');
+                btn.className = `p-2 rounded-lg font-bold text-[10px] uppercase shadow-sm border-2 border-transparent transition-all opacity-50 t-${type} bg-type-filled text-white`;
+                btn.textContent = typeTranslations[type];
+                btn.dataset.type = type;
+                btn.onclick = () => Game.toggleTypeSetup(type, btn);
+                container.appendChild(btn);
+            });
+        }
+        Game.updateStartButton();
+    },
+
+    toggleRegion: (region, btnElement) => {
+        if (gameState.config.selectedRegions.has(region)) {
+            gameState.config.selectedRegions.delete(region);
+            btnElement.classList.add('opacity-50', 'bg-slate-100', 'dark:bg-slate-800');
+            btnElement.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-50', 'dark:bg-blue-900/40', 'opacity-100');
+        } else {
+            gameState.config.selectedRegions.add(region);
+            btnElement.classList.remove('opacity-50', 'bg-slate-100', 'dark:bg-slate-800');
+            btnElement.classList.add('ring-2', 'ring-blue-500', 'bg-blue-50', 'dark:bg-blue-900/40', 'opacity-100');
+        }
+        Game.updateStartButton();
+    },
+    
+    toggleTypeSetup: (type, btnElement) => {
+        if (gameState.config.selectedTypes.has(type)) {
+            gameState.config.selectedTypes.delete(type);
+            btnElement.classList.add('opacity-50');
+            btnElement.classList.remove('ring-2', 'ring-white', 'scale-105', 'opacity-100');
+        } else {
+            gameState.config.selectedTypes.add(type);
+            btnElement.classList.remove('opacity-50');
+            btnElement.classList.add('ring-2', 'ring-white', 'scale-105', 'opacity-100');
+        }
+        Game.updateStartButton();
+    },
+    
+    toggleAllTypes: () => {
+        const allTypes = Object.keys(typeTranslations);
+        const container = document.getElementById('setup-type-grid');
+        const buttons = container.querySelectorAll('button');
+        if (gameState.config.selectedTypes.size === allTypes.length) {
+            gameState.config.selectedTypes.clear();
+            buttons.forEach(btn => {
+                btn.classList.add('opacity-50');
+                btn.classList.remove('ring-2', 'ring-white', 'scale-105', 'opacity-100');
+            });
+        } else {
+            allTypes.forEach(t => gameState.config.selectedTypes.add(t));
+            buttons.forEach(btn => {
+                btn.classList.remove('opacity-50');
+                btn.classList.add('ring-2', 'ring-white', 'scale-105', 'opacity-100');
+            });
+        }
+        Game.updateStartButton();
+    },
+    
+    filterPokemonDB: () => {
+        const regions = Array.from(gameState.config.selectedRegions);
+        const types = Array.from(gameState.config.selectedTypes);
+
+        let filtered = gameState.fullPokemonDB;
+
+        if (regions.length > 0) {
+            const regionPokedexNames = regions.map(r => REGION_RANGES[r]).flat();
+            filtered = filtered.filter(p => {
+                return p.pokedexes && p.pokedexes.some(pokedex => regionPokedexNames.includes(pokedex.name));
+            });
+        }
+        
+        if (types.length > 0) {
+            filtered = filtered.filter(p => p.types.some(t => types.includes(t.toLowerCase())));
+        }
+
+        gameState.pokemonList = filtered;
+        return filtered.length;
+    },
+    
+    updateStartButton: () => {
+        const btn = document.getElementById('btn-start-game');
+        if (btn) {
+            const regionCount = gameState.config.selectedRegions.size;
+            if (regionCount > 0) {
+                btn.disabled = false;
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                if (gameState.fullPokemonDB.length > 0) {
+                    const pokemonCount = Game.filterPokemonDB();
+                    btn.innerHTML = `JUGAR (<span id="count-display">${pokemonCount}</span>)`;
+                } else {
+                    btn.innerHTML = `JUGAR`;
+                }
+            } else {
+                btn.disabled = true;
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+                btn.innerHTML = `JUGAR`;
+            }
+        }
+    },
+    
+    startGameConfirmed: async () => {
+        UI.showLoading(true);
+        await Game.loadPokemon();
+        Game.filterPokemonDB();
+        Game.updateStartButton();
+        
+        if (gameState.mode === 'local') {
+            Game.startSelectionPhase();
+        } else {
+            if (!gameState.online.gameId) return;
+            await updateDoc(doc(db, 'games', gameState.online.gameId), {
+                config: {
+                    regions: Array.from(gameState.config.selectedRegions),
+                    types: Array.from(gameState.config.selectedTypes)
+                },
+                phase: 'selection'
+            });
+        }
+        UI.showLoading(false);
+    },
+
+    startSelectionPhase: () => {
+        UI.elements.setupScreen.classList.add('hidden');
+        UI.elements.selectionScreen.classList.remove('hidden');
+        
+        gameState.local.p1.pokemon = null;
+        gameState.local.p2.pokemon = null;
+
+        UI.renderGrid(UI.elements.selectionGrid, gameState.pokemonList, (poke) => {
+            if (gameState.mode === 'local') {
+                const isP1Turn = !gameState.local.p1.pokemon;
+                const playerLabel = isP1Turn ? "Jugador 1" : "Jugador 2";
+                UI.showModal(`Selección ${playerLabel}`, `¿Eliges a ${poke.name}?`, () => {
+                    if (isP1Turn) {
+                        gameState.local.p1.pokemon = poke;
+                        UI.elements.selectionGrid.parentElement.scrollTop = 0;
+                        UI.showModal("¡Guardado!", "Ahora elige el Jugador 2. (No mires si eres J1)", () => {}, true);
+                    } else {
+                        gameState.local.p2.pokemon = poke;
+                        Game.initBattlePhase();
+                    }
+                });
+            } else {
+                const myRole = gameState.online.role === 'host' ? 'player1' : 'player2';
+                UI.showModal("Confirmar", `¿Eliges a ${poke.name}?`, async () => {
+                    const gameRef = doc(db, 'games', gameState.online.gameId);
+                    try {
+                        const cleanPoke = JSON.parse(JSON.stringify(poke)); 
+                        await runTransaction(db, async (transaction) => {
+                            const gameDoc = await transaction.get(gameRef);
+                            if (!gameDoc.exists()) throw "Error";
+                            const gameData = gameDoc.data();
+                            const update = {};
+                            update[`${myRole}.pokemon`] = cleanPoke;
+                            const opponentRole = myRole === 'player1' ? 'player2' : 'player1';
+                            if (gameData[opponentRole] && gameData[opponentRole].pokemon) {
+                                update.phase = 'battle';
+                                update.turn = gameData.host;
+                            }
+                            transaction.update(gameRef, update);
+                        });
+                    } catch (e) {
+                        console.error("Transaction failed: ", e);
+                        alert("Hubo un error al seleccionar.");
+                    }
+                });
+            }
         });
     },
 
-    startLocalTurn: (player) => {
-        gameState.local.turn = player;
-        gameState.hasGuessedThisTurn = false;
-        UI.elements.guessBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-        UI.elements.gameBoardScreen.classList.add('hidden');
-        UI.elements.interstitialScreen.classList.remove('hidden');
-        UI.elements.interstitialScreen.querySelector('h2').textContent = `Turno Jugador ${player}`;
+    initBattlePhase: () => {
+        UI.elements.selectionScreen.classList.add('hidden');
+        UI.elements.gameBoardScreen.classList.remove('hidden');
         
-        UI.renderGrid(UI.elements.mainGrid, gameState.pokemonList, (poke) => {
-             const data = player === 1 ? gameState.local.p1 : gameState.local.p2;
-             if (data.eliminated.has(poke.id)) data.eliminated.delete(poke.id);
-             else data.eliminated.add(poke.id);
-             Game.renderLocalBoard();
-        }, (player === 1 ? gameState.local.p1.eliminated : gameState.local.p2.eliminated));
+        const emoteBar = document.getElementById('emote-bar');
+        if (emoteBar) {
+            if (gameState.mode === 'online') emoteBar.classList.remove('hidden');
+            else emoteBar.classList.add('hidden');
+        }
+
+        if (gameState.mode === 'local') Game.renderLocalBoard();
     },
 
     renderLocalBoard: () => {
-        UI.elements.gameBoardScreen.classList.remove('hidden');
-        const p = gameState.local.turn;
-        const data = p === 1 ? gameState.local.p1 : gameState.local.p2;
-        UI.updateHUD(data.secret, true);
+        const turn = gameState.local.turn; 
+        const playerData = turn === 1 ? gameState.local.p1 : gameState.local.p2;
+        UI.updateHUD(playerData.pokemon, true); 
         UI.renderGrid(UI.elements.mainGrid, gameState.pokemonList, (poke) => {
-            if (data.eliminated.has(poke.id)) data.eliminated.delete(poke.id);
-            else data.eliminated.add(poke.id);
-            Game.renderLocalBoard();
-        }, data.eliminated);
-    },
-    
-    renderOnlineBoard: () => {
-        if (!gameState.online.data) return;
-        const myRole = gameState.online.role === 'host' ? 'player1' : 'player2';
-        const myData = gameState.online.data[myRole];
-        const elimSet = new Set(myData.eliminated || []);
-        const isMyTurn = gameState.online.data.turn === auth.currentUser.uid;
-
-        UI.renderGrid(UI.elements.mainGrid, gameState.pokemonList, (poke) => {
-            if (!isMyTurn) return;
-            let newElim = [...(myData.eliminated || [])];
-            if (newElim.includes(poke.id)) newElim = newElim.filter(id => id !== poke.id);
-            else newElim.push(poke.id);
-            updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
-                [`${myRole}.eliminated`]: newElim,
-                lastActivity: Date.now()
-            });
-        }, elimSet);
+            if (playerData.eliminated.has(poke.id)) playerData.eliminated.delete(poke.id);
+            else playerData.eliminated.add(poke.id);
+            Game.renderLocalBoard(); 
+        }, playerData.eliminated);
     },
 
-    handleEndTurn: async () => {
-        if (gameState.mode === 'local') {
-            const current = gameState.local.turn;
-            Game.startLocalTurn(current === 1 ? 2 : 1);
-        } else {
-            const data = gameState.online.data;
-            const nextTurnId = data.turn === data.player1.id ? data.player2.id : data.player1.id;
-            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
-                turn: nextTurnId,
-                lastActivity: Date.now()
+    createOnlineRoom: async () => {
+        UI.showLoading(true);
+        try {
+            const roomId = Math.floor(100000 + Math.random() * 900000).toString();
+            await setDoc(doc(db, 'games', roomId), {
+                host: gameState.online.myId, 
+                guest: null, 
+                phase: 'lobby', 
+                turn: null, 
+                config: null,
+                player1: { pokemon: null, eliminated: [] }, 
+                player2: { pokemon: null, eliminated: [] }, 
+                lastAction: null,
+                lastEmote: null,
+                history: []
             });
+            gameState.online.gameId = roomId;
+            gameState.online.role = 'host';
+            Game.subscribeToGame(roomId);
+        } catch (e) { 
+            console.error(e); 
+            UI.showLoading(false); 
+            alert("Error creando sala"); 
         }
+    },
+
+    joinGame: async (gameId) => {
+        UI.showLoading(true);
+        const gameRef = doc(db, 'games', gameId);
+        const snap = await getDoc(gameRef);
+        if (snap.exists()) {
+            const data = snap.data();
+            if (!data.guest) {
+                await updateDoc(gameRef, { guest: gameState.online.myId });
+                gameState.online.gameId = gameId;
+                gameState.online.role = 'guest';
+                Game.subscribeToGame(gameId);
+            } else if (data.guest === gameState.online.myId || data.host === gameState.online.myId) {
+                gameState.online.gameId = gameId;
+                gameState.online.role = data.host === gameState.online.myId ? 'host' : 'guest';
+                Game.subscribeToGame(gameId);
+            } else { UI.showLoading(false); alert("Sala llena"); }
+        } else { UI.showLoading(false); alert("No encontrada"); }
+    },
+
+    subscribeToGame: (gameId) => {
+        if (Game.unsub) Game.unsub();
+    
+        Game.unsub = onSnapshot(doc(db, 'games', gameId), async (docSnap) => {
+            UI.showLoading(false);
+            if (!docSnap.exists()) {
+                UI.resetViews();
+                alert("La sala ha sido cerrada.");
+                return;
+            }
+    
+            const data = docSnap.data();
+            gameState.online.data = data;
+
+            // --- CORRECCIÓN: Carga de datos fuera del if de fase ---
+            if (data.config) {
+                gameState.config.selectedRegions = new Set(data.config.regions);
+                gameState.config.selectedTypes = new Set(data.config.types);
+                
+                const currentRegions = Array.from(gameState.config.selectedRegions).sort().join(',');
+                const loadedRegions = Game.loadedRegions ? Array.from(Game.loadedRegions).sort().join(',') : '';
+
+                if (gameState.fullPokemonDB.length === 0 || currentRegions !== loadedRegions) {
+                    UI.showLoading(true);
+                    await Game.loadPokemon();
+                    UI.showLoading(false);
+                }
+                
+                Game.filterPokemonDB();
+            }
+    
+            // Manejo de Vistas por Fases
+            UI.elements.selectionScreen.classList.add('hidden');
+            UI.elements.gameBoardScreen.classList.add('hidden');
+            UI.elements.winnerModal.classList.add('hidden');
+            UI.elements.onlineWaitScreen.classList.add('hidden');
+            UI.elements.loadingScreen.classList.add('hidden');
+            UI.elements.lobbyScreen.classList.add('hidden');
+            UI.elements.waitingScreen.classList.add('hidden');
+            
+            if (data.phase === 'lobby') {
+                UI.elements.waitingScreen.classList.remove('hidden');
+                UI.elements.waitingCode.textContent = gameId;
+                const statusPill = document.querySelector('#waitingScreen span.font-bold');
+                
+                if (data.host && data.guest) {
+                    if (gameState.online.role === 'host') {
+                        UI.elements.waitingScreen.classList.add('hidden');
+                        Game.initSetupUI();
+                    } else {
+                        if(statusPill) statusPill.textContent = "El host está configurando...";
+                    }
+                } else {
+                    if(statusPill) statusPill.textContent = "Esperando rival...";
+                }
+            }
+            
+            else if (data.phase === 'selection') {
+                const myRole = gameState.online.role === 'host' ? 'player1' : 'player2';
+                
+                if (data[myRole] && data[myRole].pokemon) {
+                    UI.elements.loadingScreen.classList.remove('hidden'); 
+                    UI.elements.loadingScreen.textContent = "Pokémon seleccionado. Esperando al rival...";
+                } else {
+                    if (gameState.pokemonList.length > 0) {
+                        if (UI.elements.selectionGrid.children.length === 0) {
+                            Game.startSelectionPhase();
+                        }
+                    }
+                    UI.elements.selectionScreen.classList.remove('hidden');
+                }
+            }
+
+            else if (data.phase === 'battle') {
+                UI.elements.gameBoardScreen.classList.remove('hidden');
+                const emoteBar = document.getElementById('emote-bar');
+                if(emoteBar) emoteBar.classList.remove('hidden');
+
+                const myRole = gameState.online.role === 'host' ? 'player1' : 'player2';
+                const myData = data[myRole];
+                
+                if (myData && myData.pokemon) {
+                    UI.updateHUD(myData.pokemon, data.turn === gameState.online.myId);
+                    
+                    UI.renderGrid(UI.elements.mainGrid, gameState.pokemonList, async (poke) => {
+                        const current = myData.eliminated || [];
+                        const next = current.includes(poke.id) 
+                            ? current.filter(id => id !== poke.id) 
+                            : [...current, poke.id];
+                        await updateDoc(doc(db, 'games', gameId), { [`${myRole}.eliminated`]: next });
+                    }, new Set(myData.eliminated));
+
+                    if (data.turn !== gameState.online.myId) {
+                        UI.elements.onlineWaitScreen.classList.remove('hidden');
+                    } else {
+                        UI.elements.onlineWaitScreen.classList.add('hidden');
+                    }
+                }
+                
+                Game.handleOnlineActions(data);
+
+                // --- EMOTES ---
+                if (data.lastEmote && data.lastEmote.sender !== gameState.online.myId) {
+                    const lastTs = window.lastEmoteTs || 0;
+                    if (data.lastEmote.timestamp > lastTs) {
+                        window.lastEmoteTs = data.lastEmote.timestamp;
+                        // --- CORRECCIÓN: Llamada a UI.showEmoteToast ---
+                        UI.showEmoteToast(data.lastEmote.content);
+                    }
+                }
+
+                // --- HISTORIAL ---
+                if (data.history) {
+                    gameState.history = data.history;
+                    const historyModal = document.getElementById('historyModal');
+                    if (historyModal && !historyModal.classList.contains('hidden')) {
+                        UI.renderHistory(data.history);
+                    }
+                }
+            }
+
+            else if (data.phase === 'finished') {
+                const iWon = data.winner === gameState.online.myId;
+                const oppRole = gameState.online.role === 'host' ? 'player2' : 'player1';
+                UI.showWinner(iWon, data[oppRole].pokemon);
+            }
+        });
     },
 
     makeGuess: async (poke) => {
-        UI.showModal(`¿Es ${poke.name}?`, "Si fallas, pasará tu turno automáticamente.", async () => {
+        if (gameState.mode === 'local') {
+            const turn = gameState.local.turn;
+            const oppSecret = turn === 1 ? gameState.local.p2.pokemon : gameState.local.p1.pokemon;
             UI.elements.guessModal.classList.add('hidden');
-            let isCorrect = false;
-            let targetSecret = null;
-
-            if (gameState.mode === 'local') {
-                const current = gameState.local.turn;
-                targetSecret = current === 1 ? gameState.local.p2.secret : gameState.local.p1.secret;
-                isCorrect = (poke.id === targetSecret.id);
+            if (poke.id === oppSecret.id) {
+                UI.showWinner(true, oppSecret);
             } else {
-                 const data = gameState.online.data;
-                 const oppRole = gameState.online.role === 'host' ? 'player2' : 'player1';
-                 targetSecret = data[oppRole].secret;
-                 isCorrect = (poke.id === targetSecret.id);
+                const currentPlayer = turn === 1 ? gameState.local.p1 : gameState.local.p2;
+                currentPlayer.eliminated.add(poke.id);
+                Game.renderLocalBoard();
+                UI.showModal("¡Incorrecto!", `No es ${poke.name}. Pierdes tu turno.`, () => {
+                    gameState.local.turn = turn === 1 ? 2 : 1;
+                    UI.elements.interstitialScreen.classList.remove('hidden');
+                }, true);
             }
-
-            if (isCorrect) {
-                 if (gameState.mode === 'local') {
-                     UI.elements.winnerTitle.textContent = `¡JUGADOR ${gameState.local.turn} GANA!`;
-                     UI.elements.winnerTitle.className = gameState.local.turn === 1 ? "text-3xl font-black text-blue-500" : "text-3xl font-black text-red-500";
-                     UI.elements.winnerSubtitle.textContent = "Adivinó el secreto";
-                     UI.elements.winnerRevealImg.src = targetSecret.image;
-                     UI.elements.winnerRevealName.textContent = targetSecret.name;
-                     UI.elements.winnerModal.classList.remove('hidden');
-                 }
-                 else await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
-                     winner: auth.currentUser.uid,
-                     lastActivity: Date.now()
-                 });
+        } else {
+            const oppRole = gameState.online.role === 'host' ? 'player2' : 'player1';
+            UI.elements.guessModal.classList.add('hidden');
+            if (poke.id === gameState.online.data[oppRole].pokemon.id) {
+                updateDoc(doc(db, 'games', gameState.online.gameId), { phase: 'finished', winner: gameState.online.myId });
             } else {
-                if (gameState.mode === 'local') {
-                    const p = gameState.local.turn;
-                    const data = p === 1 ? gameState.local.p1 : gameState.local.p2;
-                    data.eliminated.add(poke.id);
-                    Game.renderLocalBoard();
-                } else {
-                    const myRole = gameState.online.role === 'host' ? 'player1' : 'player2';
-                    const currentElim = gameState.online.data[myRole].eliminated || [];
-                    if (!currentElim.includes(poke.id)) {
-                        const newElim = [...currentElim, poke.id];
-                        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
-                            [`${myRole}.eliminated`]: newElim,
-                            lastActivity: Date.now()
-                        });
-                    }
-                }
-                gameState.hasGuessedThisTurn = true;
-                UI.elements.guessBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                UI.showModal("¡Incorrecto!", `Elegiste a ${poke.name}, pero no es. Se ha eliminado del tablero. Tu turno termina.`, () => Game.handleEndTurn(), true);
+                const myRole = gameState.online.role === 'host' ? 'player1' : 'player2';
+                const currentEliminated = gameState.online.data[myRole].eliminated || [];
+                const nextEliminated = [...new Set([...currentEliminated, poke.id])];
+                UI.showModal("¡Fallaste!", `No es ${poke.name}. Pierdes tu turno.`, () => Game.handleEndTurn({ [`${myRole}.eliminated`]: nextEliminated }), true);
             }
-        });
+        }
     },
 
-    applyFilter: async (criteriaArray, isType, responseYes) => {
-        let toEliminate = [];
-        gameState.pokemonList.forEach(p => {
-            let match = false;
-            if (isType) match = criteriaArray.some(type => p.types.includes(type));
-            else {
-                if (criteriaArray[0] === 'single') match = p.types.length === 1;
-                else if (criteriaArray[0] === 'dual') match = p.types.length === 2;
-            }
-            if (responseYes && !match) toEliminate.push(p.id);
-            if (!responseYes && match) toEliminate.push(p.id);
-        });
-
-        if (gameState.mode === 'local') {
-            const p = gameState.local.turn;
-            const data = p === 1 ? gameState.local.p1 : gameState.local.p2;
-            toEliminate.forEach(id => data.eliminated.add(id));
-            Game.renderLocalBoard();
-        } else {
-            const myRole = gameState.online.role === 'host' ? 'player1' : 'player2';
-            const currentElim = gameState.online.data[myRole].eliminated || [];
-            const newElim = [...new Set([...currentElim, ...toEliminate])];
-            
-             if (!gameState.online.data?.interaction) {
-                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
-                    [`${myRole}.eliminated`]: newElim,
-                    lastActivity: Date.now()
+    handleEndTurn: async (extraUpdates = {}) => {
+        if (gameState.mode === 'online') {
+            const currentTurn = gameState.online.data.turn;
+            const hostId = gameState.online.data.host;
+            const guestId = gameState.online.data.guest;
+            const nextTurn = currentTurn === hostId ? guestId : hostId;
+            try {
+                await updateDoc(doc(db, 'games', gameState.online.gameId), { 
+                    turn: nextTurn, 
+                    lastAction: null,
+                    ...extraUpdates 
                 });
-             }
+            } catch (error) { console.error("Error cambio turno:", error); }
+        } else {
+            gameState.local.turn = gameState.local.turn === 1 ? 2 : 1;
+            UI.elements.interstitialScreen.classList.remove('hidden');
         }
-        Game.handleEndTurn(); 
     },
     
     toggleVisibility: () => {
         gameState.hideEliminated = !gameState.hideEliminated;
         UI.updateVisibilityBtn();
-        if (gameState.mode === 'local') Game.renderLocalBoard();
-        else Game.renderOnlineBoard();
+        if (gameState.mode === 'local') {
+            Game.renderLocalBoard();
+        } else {
+            const role = gameState.online.role === 'host' ? 'player1' : 'player2';
+            const clickHandler = async (poke) => {
+                const current = gameState.online.data[role].eliminated || [];
+                const next = current.includes(poke.id) 
+                    ? current.filter(id => id !== poke.id) 
+                    : [...current, poke.id];
+                await updateDoc(doc(db, 'games', gameState.online.gameId), { [`${role}.eliminated`]: next });
+            };
+            UI.renderGrid(UI.elements.mainGrid, gameState.pokemonList, clickHandler, new Set(gameState.online.data[role].eliminated));
+        }
     },
     
-    selectMode: (mode) => {
-        if (mode === 'online' && !auth.currentUser) return UI.showModal("Error", "Esperando conexión...", null, true);
-        gameState.mode = mode;
-        UI.elements.modeScreen.classList.add('hidden');
-        if (mode === 'local') UI.elements.setupScreen.classList.remove('hidden');
-        else UI.elements.lobbyScreen.classList.remove('hidden');
+    sendQuestion: async (criteria, isType, isGeneration = false) => {
+        updateDoc(doc(db, 'games', gameState.online.gameId), { lastAction: { type: 'question', sender: gameState.online.myId, criteria, isType, isGeneration, status: 'pending' } });
+    },
+    
+    // --- CORRECCIÓN: Llamada a UI.showEmoteToast ---
+    sendEmote: async (emoji) => {
+        if (!gameState.online.gameId) return;
+        try {
+            await updateDoc(doc(db, 'games', gameState.online.gameId), {
+                lastEmote: {
+                    sender: gameState.online.myId,
+                    content: emoji,
+                    timestamp: Date.now()
+                }
+            });
+            UI.showEmoteToast(emoji, true);
+        } catch (e) {
+            console.error("Error emote:", e);
+        }
     },
 
-    resetGame: () => {
-        if (unsubscribeGame) { unsubscribeGame(); unsubscribeGame = null; }
-        resetGameState();
-        UI.resetViews();
-        history.pushState("", document.title, window.location.pathname + window.location.search);
+    handleOnlineActions: (data) => {
+        const action = data.lastAction;
+        if (!action) return;
+        
+        if (action.sender !== gameState.online.myId && action.status === 'pending') {
+            if (!document.getElementById('uiModal').classList.contains('hidden')) return;
+            UI.showQuestionModal(action.criteria, action.isType, (res) => Game.sendResponse(res), action.isGeneration);
+        }
+        
+        if (action.sender === gameState.online.myId && action.status === 'answered') {
+            if (!document.getElementById('uiModal').classList.contains('hidden')) return;
+            UI.showModal("Respuesta", `Dijo: ${action.response ? "SÍ" : "NO"}`, async () => {
+                let updates;
+                if (action.isGeneration) {
+                    const toEliminate = Game.applyGenerationFilter(action.criteria, action.response, true);
+                    const role = gameState.online.role === 'host' ? 'player1' : 'player2';
+                    const currentEliminated = gameState.online.data[role].eliminated || [];
+                    const nextEliminated = Array.from(new Set([...currentEliminated, ...toEliminate]));
+                    updates = { [`${role}.eliminated`]: nextEliminated };
+                } else {
+                    const toEliminate = Game.applyFilter(action.criteria, action.isType, action.response, true);
+                    const role = gameState.online.role === 'host' ? 'player1' : 'player2';
+                    const currentEliminated = gameState.online.data[role].eliminated || [];
+                    const nextEliminated = Array.from(new Set([...currentEliminated, ...toEliminate]));
+                    updates = { [`${role}.eliminated`]: nextEliminated };
+                }
+                Game.handleEndTurn(updates);
+            }, true);
+        }
+    },
+    
+    sendResponse: async (res) => {
+        const act = gameState.online.data.lastAction;
+        const qText = Game.formatQuestionText(act.criteria, act.isType, act.isGeneration);
+        
+        const historyEntry = {
+            question: qText,
+            answer: res,
+            turn: gameState.online.role === 'host' ? 'Invitado' : 'Anfitrión'
+        };
+
+        await updateDoc(doc(db, 'games', gameState.online.gameId), { 
+            lastAction: { ...act, status: 'answered', response: res },
+            history: arrayUnion(historyEntry) // Usar arrayUnion exportado
+        });
+    },
+    
+    // Función auxiliar para texto del historial
+    formatQuestionText: (criteria, isType, isGeneration) => {
+        if (isGeneration) {
+            const genNames = criteria.map(g => GENERATION_NAMES[g] || g).join(', ');
+            return `¿Gen: ${genNames}?`;
+        } else if (isType) {
+            const translatedTypes = criteria.map(t => typeTranslations[t] || t).join(', ');
+            return `¿Tipo: ${translatedTypes}?`;
+        } else {
+            if (criteria[0] === 'single') return "¿Un solo tipo?";
+            if (criteria[0] === 'dual') return "¿Doble tipo?";
+            return "¿...?";
+        }
+    },
+
+    addToLocalHistory: (criteria, isType, isGeneration, response) => {
+        const qText = Game.formatQuestionText(criteria, isType, isGeneration);
+        const playerLabel = gameState.local.turn === 1 ? "J1" : "J2";
+        gameState.history.unshift({ // Agregar al principio
+            question: qText,
+            answer: response,
+            turn: playerLabel
+        });
+        // Si el modal está abierto en local, actualizar
+        const historyModal = document.getElementById('historyModal');
+        if (historyModal && !historyModal.classList.contains('hidden')) {
+            UI.renderHistory(gameState.history);
+        }
+    },
+
+    applyFilter: (criteria, isType, keep, getUpdateObj = false) => {
+        // En local, guardar en historial
+        if (gameState.mode === 'local') {
+            Game.addToLocalHistory(criteria, isType, false, keep);
+        }
+
+        const toEliminate = [];
+        gameState.pokemonList.forEach(p => {
+            let matches = false;
+            if (isType) matches = criteria.some(t => p.types.map(pt=>pt.toLowerCase()).includes(t.toLowerCase()));
+            else {
+                if (criteria[0] === 'single') matches = p.types.length === 1;
+                if (criteria[0] === 'dual') matches = p.types.length === 2;
+            }
+            if (keep) { if (!matches) toEliminate.push(p.id); } else { if (matches) toEliminate.push(p.id); }
+        });
+
+        if (gameState.mode === 'local') {
+            const pData = gameState.local.turn === 1 ? gameState.local.p1 : gameState.local.p2;
+            toEliminate.forEach(id => pData.eliminated.add(id));
+            Game.renderLocalBoard();
+        } else {
+            if (getUpdateObj) {
+                return toEliminate;
+            }
+        }
+    },
+
+    applyGenerationFilter: (generations, keep, getUpdateObj = false) => {
+        // En local, guardar en historial
+        if (gameState.mode === 'local') {
+            Game.addToLocalHistory(generations, false, true, keep);
+        }
+
+        const toEliminate = [];
+        if (!generations || !Array.isArray(generations)) return [];
+        const regionPokedexNames = generations.map(g => REGION_RANGES[g]).flat().map(n => String(n).toLowerCase());
+
+        if (regionPokedexNames.length === 0) return [];
+
+        gameState.pokemonList.forEach(p => {
+            const pokedexes = Array.isArray(p.pokedexes) ? p.pokedexes : [];
+            const matches = pokedexes.some(pokedex => {
+                const pName = typeof pokedex === 'string' ? pokedex : pokedex.name;
+                return pName && regionPokedexNames.includes(String(pName).toLowerCase());
+            });
+            
+            if (keep) { if (!matches) toEliminate.push(p.id); } else { if (matches) toEliminate.push(p.id); }
+        });
+
+        if (gameState.mode === 'local') {
+            const pData = gameState.local.turn === 1 ? gameState.local.p1 : gameState.local.p2;
+            toEliminate.forEach(id => pData.eliminated.add(id));
+            Game.renderLocalBoard();
+        } else {
+            if (getUpdateObj) {
+                return toEliminate;
+            }
+        }
     }
 };
-
-function checkSelectionState(data, myRole) {
-    const iHaveSelected = !!data[myRole].secret;
-    gameState.hasGuessedThisTurn = false;
-    UI.elements.guessBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-
-    if (!iHaveSelected) {
-        if (UI.elements.selectionScreen.classList.contains('hidden')) {
-            UI.showLoading(false);
-            Game.startOnlineSelection();
-        }
-    } else {
-        UI.elements.selectionScreen.classList.add('hidden');
-        if (data.status !== 'playing') UI.showLoading(true);
-    }
-    
-    if (data.player1.secret && data.player2.secret && data.status !== 'playing' && gameState.online.role === 'host') {
-         updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameState.online.gameId), { 
-             status: 'playing',
-             lastActivity: Date.now()
-         });
-    }
-}
-
-function handlePlayingState(data, myRole) {
-    if (!data.interaction || data.interaction.status !== 'waiting_response' || data.interaction.asker === auth.currentUser.uid) {
-        UI.showLoading(false);
-        UI.elements.selectionScreen.classList.add('hidden');
-        UI.elements.gameBoardScreen.classList.remove('hidden');
-    }
-    
-    if (UI.elements.mainGrid.children.length === 0 && gameState.pokemonList.length > 0) {
-        Game.renderOnlineBoard();
-    }
-    
-    const isMyTurn = data.turn === auth.currentUser.uid;
-    UI.updateHUD(data[myRole].secret, isMyTurn);
-
-    if (gameState.online.currentTurnOwner !== data.turn) {
-        gameState.online.currentTurnOwner = data.turn;
-        if (isMyTurn) {
-            gameState.hasGuessedThisTurn = false;
-            UI.elements.guessBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-        }
-    }
-
-    if (isMyTurn) UI.elements.onlineWaitScreen.classList.add('hidden');
-    else UI.elements.onlineWaitScreen.classList.remove('hidden');
-    
-    Game.renderOnlineBoard();
-}

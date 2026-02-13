@@ -1,10 +1,21 @@
 export const gameState = {
     mode: null, // 'local' | 'online'
-    pokemonList: [],
+    fullPokemonDB: [], // Base completa
+    pokemonList: [],   // Base filtrada para el juego
+    
+    // CONFIGURACIÓN DE PARTIDA
+    config: {
+        selectedRegions: new Set(),
+        selectedTypes: new Set() // Vacío = Todos
+    },
+
+    // HISTORIAL (NUEVO)
+    history: [],
+
     local: {
         turn: 1,
-        p1: { secret: null, eliminated: new Set() },
-        p2: { secret: null, eliminated: new Set() }
+        p1: { pokemon: null, eliminated: new Set() },
+        p2: { pokemon: null, eliminated: new Set() }
     },
     online: {
         gameId: null,
@@ -15,12 +26,16 @@ export const gameState = {
     },
     hasGuessedThisTurn: false,
     hideEliminated: false,
-    selectedFilters: new Set()
+    selectedFilters: new Set(),
+    selectedGenerationFilters: new Set()
 };
 
 export const resetGameState = () => {
     gameState.pokemonList = [];
-    gameState.local = { turn: 1, p1: { secret: null, eliminated: new Set() }, p2: { secret: null, eliminated: new Set() } };
+    gameState.config.selectedRegions.clear();
+    gameState.config.selectedTypes.clear();
+    gameState.history = []; // Limpiar historial
+    gameState.local = { turn: 1, p1: { pokemon: null, eliminated: new Set() }, p2: { pokemon: null, eliminated: new Set() } };
     gameState.online.gameId = null;
     gameState.online.role = null;
     gameState.online.data = null;
@@ -28,4 +43,5 @@ export const resetGameState = () => {
     gameState.hasGuessedThisTurn = false;
     gameState.hideEliminated = false;
     gameState.selectedFilters.clear();
+    gameState.selectedGenerationFilters.clear();
 };
