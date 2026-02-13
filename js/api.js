@@ -1,9 +1,7 @@
 const pokemonCache = new Map();
+const CACHE_VERSION = 'poke_cache_v4'; // Nueva versión para asegurar limpieza de datos previos
 
-// --- OPTIMIZACIÓN: Cargar caché desde LocalStorage al iniciar ---
-// Usamos una versión de caché para forzar la actualización si hay cambios estructurales
-const CACHE_VERSION = 'poke_cache_v2'; 
-
+// --- GESTIÓN DE ALMACENAMIENTO ---
 try {
     const savedCache = localStorage.getItem(CACHE_VERSION);
     if (savedCache) {
@@ -12,7 +10,8 @@ try {
         console.log("⚡ Caché restaurado:", pokemonCache.size, "Pokémon listos.");
     }
 } catch (e) {
-    console.warn("No se pudo cargar caché local", e);
+    console.warn("Caché local no disponible o corrupto.");
+    localStorage.removeItem(CACHE_VERSION);
 }
 
 function saveCacheToLocal() {
@@ -21,56 +20,71 @@ function saveCacheToLocal() {
             cacheKey: k,
             data: v
         }));
-        localStorage.setItem(CACHE_VERSION, JSON.stringify(cacheArray));
+        const serialized = JSON.stringify(cacheArray);
+        // Límite de seguridad para LocalStorage (habitualmente 5MB)
+        if (serialized.length < 4800000) {
+            localStorage.setItem(CACHE_VERSION, serialized);
+        }
     } catch (e) {
-        console.warn("LocalStorage lleno o error al guardar:", e);
+        console.error("Error al persistir caché:", e.name);
     }
 }
 
-async function fetchFromApi(url) {
-    try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+// --- UTILIDADES DE RED CON REINTENTOS ---
+async function fetchWithRetry(url, retries = 3, delay = 1000) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // Aumentado a 10s
+            
+            const response = await fetch(url, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) throw new Error(`Status ${response.status}`);
+            return await response.json();
+        } catch (error) {
+            if (i === retries - 1) throw error;
+            await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
         }
-        return await response.json();
-    } catch (error) {
-        console.error(`Error fetching from ${url}:`, error);
-        return null;
     }
 }
 
 /**
- * Obtiene los detalles de un Pokémon manejando variantes regionales (Hisui, Alola, etc.)
+ * Obtiene detalles manejando variantes regionales.
  */
 async function getPokemonDetails(speciesUrl, region, pokedexName) {
-    // Clave de caché única por especie y región para evitar que Arcanine-Kanto sobrescriba a Arcanine-Hisui
-    const cacheKey = `${speciesUrl}-${region || 'default'}`;
-    let details;
-
+    // Si la región es "kanto" o similar a las originales, no buscamos variante regional
+    // para evitar falsos positivos y acelerar la carga.
+    const isStandardRegion = ['kanto', 'johto', 'hoenn', 'sinnoh', 'unova', 'kalos'].includes(region);
+    const searchRegion = isStandardRegion ? null : region;
+    
+    const cacheKey = `${speciesUrl}-${searchRegion || 'default'}`;
+    
     if (pokemonCache.has(cacheKey)) {
-        details = pokemonCache.get(cacheKey);
-    } else {
-        const speciesData = await fetchFromApi(speciesUrl);
+        const details = pokemonCache.get(cacheKey);
+        if (pokedexName && !details.pokedexes.some(p => p.name === pokedexName)) {
+            details.pokedexes.push({ name: pokedexName, entry_number: 0 });
+        }
+        return details;
+    }
+
+    try {
+        const speciesData = await fetchWithRetry(speciesUrl);
         if (!speciesData) return null;
 
         let varietyUrl = null;
         
-        if (region) {
-            const rLower = region.toLowerCase();
-            // Buscamos una variedad que coincida con la región (ej. -hisui, -alola, -galar)
-            // PokeAPI es consistente con estos sufijos para formas regionales.
+        // Solo buscamos variantes regionales en regiones que las tengan (Alola, Galar, Hisui, Paldea)
+        if (searchRegion) {
+            const rLower = searchRegion.toLowerCase();
             const regionalVariety = speciesData.varieties.find(v => {
                 const vName = v.pokemon.name.toLowerCase();
                 return vName.includes(`-${rLower}`) || vName.includes(`${rLower}-`);
             });
-            
-            if (regionalVariety) {
-                varietyUrl = regionalVariety.pokemon.url;
-            }
+            if (regionalVariety) varietyUrl = regionalVariety.pokemon.url;
         }
         
-        // Si no hay variante regional para este Pokémon en esta pokedex, usamos la versión por defecto
+        // Fallback a la forma por defecto
         if (!varietyUrl) {
             const defaultVariety = speciesData.varieties.find(v => v.is_default);
             varietyUrl = defaultVariety ? defaultVariety.pokemon.url : null;
@@ -78,77 +92,89 @@ async function getPokemonDetails(speciesUrl, region, pokedexName) {
         
         if (!varietyUrl) return null;
 
-        const pokemonData = await fetchFromApi(varietyUrl);
+        const pokemonData = await fetchWithRetry(varietyUrl);
         if (!pokemonData) return null;
 
-        details = {
+        const details = {
             id: pokemonData.id,
             name: pokemonData.name,
             types: pokemonData.types.map(t => t.type.name),
-            // Prioridad: Official Artwork -> Home -> Default Sprite
             image: pokemonData.sprites.other?.['official-artwork']?.front_default || 
                    pokemonData.sprites.other?.home?.front_default ||
                    pokemonData.sprites.front_default || "",
-            pokedexes: [] 
+            pokedexes: [{ name: pokedexName, entry_number: 0 }] 
         };
+
         pokemonCache.set(cacheKey, details);
+        return details;
+    } catch (error) {
+        console.error("Error cargando Pokémon:", speciesUrl, error.message);
+        return null;
     }
-
-    // Registrar la pertenencia a la Pokédex actual para el filtrado en game.js
-    if (pokedexName && !details.pokedexes.some(p => p.name === pokedexName)) {
-        details.pokedexes.push({ name: pokedexName, entry_number: 0 });
-    }
-
-    return details;
 }
 
 /**
- * Carga todos los Pokémon de las Pokédex solicitadas.
+ * Carga masiva de Pokémon de las regiones seleccionadas.
  */
 export async function loadAllPokemon(pokedexNames, onProgress, onComplete) {
-    let allPokemon = [];
-    let hasNewData = false;
+    const allPokemonMap = new Map();
+    const totalPokedexes = pokedexNames.length;
 
-    for (let i = 0; i < pokedexNames.length; i++) {
+    for (let i = 0; i < totalPokedexes; i++) {
         const pokedexName = pokedexNames[i];
-        onProgress(pokedexName, i + 1, pokedexNames.length);
+        onProgress(pokedexName, i + 1, totalPokedexes);
 
-        const pokedexData = await fetchFromApi(`https://pokeapi.co/api/v2/pokedex/${pokedexName}`);
-        if (!pokedexData) continue;
+        try {
+            const pokedexData = await fetchWithRetry(`https://pokeapi.co/api/v2/pokedex/${pokedexName}`);
+            if (!pokedexData) continue;
 
-        const entries = pokedexData.pokemon_entries;
-        const batchSize = 35; // Ligeramente más grande para optimizar
-        
-        for (let j = 0; j < entries.length; j += batchSize) {
-            const batch = entries.slice(j, j + batchSize);
-            const pokemonPromises = batch.map(entry => {
-                // Mapeo inteligente de región basado en el nombre técnico de la Pokédex
-                let region = '';
-                const pName = pokedexName.toLowerCase();
+            const entries = pokedexData.pokemon_entries;
+            const batchSize = 12; // Lote más pequeño para mayor estabilidad
+            
+            for (let j = 0; j < entries.length; j += batchSize) {
+                const batch = entries.slice(j, j + batchSize);
                 
-                if (pName.includes('alola')) region = 'alola';
-                else if (pName.includes('galar') || pName.includes('armor') || pName.includes('tundra')) region = 'galar';
-                else if (pName.includes('hisui')) region = 'hisui';
-                else if (pName.includes('paldea')) region = 'paldea';
-                else {
-                    // Limpieza para regiones estándar (kanto, johto, etc.)
-                    region = pokedexName.replace('updated-', '').replace('original-', '').replace('-central', '').split('-')[0];
-                }
-                
-                return getPokemonDetails(entry.pokemon_species.url, region, pokedexName);
-            });
+                const pokemonPromises = batch.map(entry => {
+                    let region = '';
+                    const pName = pokedexName.toLowerCase();
+                    
+                    if (pName.includes('alola')) region = 'alola';
+                    else if (pName.includes('galar') || pName.includes('armor') || pName.includes('tundra')) region = 'galar';
+                    else if (pName.includes('hisui')) region = 'hisui';
+                    else if (pName.includes('paldea')) region = 'paldea';
+                    else if (pName === 'kanto') region = 'kanto';
+                    else if (pName.includes('johto')) region = 'johto';
+                    else if (pName.includes('hoenn')) region = 'hoenn';
+                    else if (pName.includes('sinnoh')) region = 'sinnoh';
+                    else if (pName.includes('unova')) region = 'unova';
+                    else if (pName.includes('kalos')) region = 'kalos';
+                    else region = pokedexName.split('-')[0];
+                    
+                    return getPokemonDetails(entry.pokemon_species.url, region, pokedexName);
+                });
 
-            const batchResults = await Promise.all(pokemonPromises);
-            const validResults = batchResults.filter(p => p !== null);
-            allPokemon.push(...validResults);
+                const results = await Promise.all(pokemonPromises);
+                results.forEach(p => {
+                    if (p) {
+                        // Consolidación: si ya existe el ID, nos aseguramos de que herede las pokedexes
+                        if (allPokemonMap.has(p.id)) {
+                            const existing = allPokemonMap.get(p.id);
+                            p.pokedexes.forEach(px => {
+                                if (!existing.pokedexes.some(epx => epx.name === px.name)) {
+                                    existing.pokedexes.push(px);
+                                }
+                            });
+                        } else {
+                            allPokemonMap.set(p.id, p);
+                        }
+                    }
+                });
+            }
+        } catch (error) {
+            console.error(`Error en Pokédex ${pokedexName}:`, error);
         }
-        hasNewData = true;
     }
 
-    if (hasNewData) {
-        saveCacheToLocal();
-    }
-
-    // Retornamos solo los Pokémon cargados en esta sesión para evitar inconsistencias con el caché global
-    onComplete(allPokemon);
+    saveCacheToLocal();
+    onComplete(Array.from(allPokemonMap.values()));
 }
