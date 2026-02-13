@@ -9,6 +9,9 @@ export const gameState = {
         selectedTypes: new Set() // Vacío = Todos
     },
 
+    // HISTORIAL (NUEVO)
+    history: [],
+
     local: {
         turn: 1,
         p1: { pokemon: null, eliminated: new Set() },
@@ -27,12 +30,11 @@ export const gameState = {
     selectedGenerationFilters: new Set()
 };
 
-
-
 export const resetGameState = () => {
     gameState.pokemonList = [];
     gameState.config.selectedRegions.clear();
     gameState.config.selectedTypes.clear();
+    gameState.history = []; // Limpiar historial
     gameState.local = { turn: 1, p1: { pokemon: null, eliminated: new Set() }, p2: { pokemon: null, eliminated: new Set() } };
     gameState.online.gameId = null;
     gameState.online.role = null;

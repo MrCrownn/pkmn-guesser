@@ -13,38 +13,60 @@ async function fetchFromApi(url) {
     }
 }
 
-async function getPokemonDetails(pokemonUrl) {
-    if (pokemonCache.has(pokemonUrl)) {
-        return pokemonCache.get(pokemonUrl);
+const regionToVarietyMap = {
+    hisui: 'hisuian',
+};
+
+async function getPokemonDetails(speciesUrl, region, pokedexName) {
+    const cacheKey = `${speciesUrl}-${region}`;
+    let details;
+
+    if (pokemonCache.has(cacheKey)) {
+        details = pokemonCache.get(cacheKey);
+    } else {
+        const speciesData = await fetchFromApi(speciesUrl);
+        if (!speciesData) return null;
+
+        let varietyUrl;
+        const defaultVariety = speciesData.varieties.find(v => v.is_default);
+        if (region) {
+            const varietyRegion = regionToVarietyMap[region] || region;
+            const regionalVariety = speciesData.varieties.find(v => v.pokemon.name.endsWith(`-${varietyRegion}`));
+            if (regionalVariety) {
+                varietyUrl = regionalVariety.pokemon.url;
+            }
+        }
+        if (!varietyUrl && defaultVariety) {
+            varietyUrl = defaultVariety.pokemon.url;
+        }
+        if (!varietyUrl) return null;
+
+        const pokemonData = await fetchFromApi(varietyUrl);
+        if (!pokemonData) return null;
+
+       
+        details = {
+            id: pokemonData.id,
+            name: pokemonData.name,
+            types: pokemonData.types.map(t => t.type.name),
+            // CORRECCIÓN: Añadido || "" al final para evitar 'undefined' que rompe Firebase
+            image: pokemonData.sprites.other?.['official-artwork']?.front_default || pokemonData.sprites.front_default || "",
+            pokedexes: [] 
+        };
+        pokemonCache.set(cacheKey, details);
     }
 
-    const pokemonData = await fetchFromApi(pokemonUrl);
-    if (!pokemonData) return null;
+   
+    if (pokedexName && !details.pokedexes.some(p => p.name === pokedexName)) {
+        details.pokedexes.push({ name: pokedexName, entry_number: 0 });
+    }
 
-    const speciesData = await fetchFromApi(pokemonData.species.url);
-    if (!speciesData) return null;
-    
-    const pokedexes = speciesData.pokedex_numbers.map(p => ({
-        name: p.pokedex.name,
-        entry_number: p.entry_number
-    }));
-
-    const details = {
-        id: pokemonData.id,
-        name: pokemonData.name,
-        types: pokemonData.types.map(t => t.type.name),
-        image: pokemonData.sprites.other?.['official-artwork']?.front_default || pokemonData.sprites.front_default,
-        pokedexes: pokedexes
-    };
-
-    pokemonCache.set(pokemonUrl, details);
     return details;
 }
 
 export async function loadAllPokemon(pokedexNames, onProgress, onComplete) {
     pokemonCache.clear();
     let allPokemon = [];
-    const fetchedUrls = new Set();
 
     for (let i = 0; i < pokedexNames.length; i++) {
         const pokedexName = pokedexNames[i];
@@ -54,18 +76,15 @@ export async function loadAllPokemon(pokedexNames, onProgress, onComplete) {
         if (!pokedexData) continue;
 
         const pokemonPromises = pokedexData.pokemon_entries.map(entry => {
-            if (!fetchedUrls.has(entry.pokemon_species.url)) {
-                fetchedUrls.add(entry.pokemon_species.url);
-                return getPokemonDetails(entry.pokemon_species.url.replace('pokemon-species', 'pokemon'));
-            }
-            return Promise.resolve(null);
+            const region = pokedexName.replace('updated-', '').replace('original-', '').replace('-central', '');
+            return getPokemonDetails(entry.pokemon_species.url, region, pokedexName);
         });
 
         const pokemonInPokedex = await Promise.all(pokemonPromises);
         allPokemon.push(...pokemonInPokedex.filter(p => p !== null));
     }
 
-    // Since a pokemon can be in multiple pokedexes, we need to merge the data
+    
     const finalPokemonList = Array.from(pokemonCache.values());
 
     onComplete(finalPokemonList);
