@@ -11,8 +11,21 @@ export const REGION_RANGES = {
     unova: 'original-unova',
     kalos: 'kalos-central',
     alola: 'updated-alola',
-    galar: ['galar', 'isle-of-armor', 'crown-tundra', 'hisui'],
+    galar: ['galar', 'isle-of-armor', 'crown-tundra', 'hisui'], // Hisui incluido aquí
     paldea: 'paldea'
+};
+
+// --- RANGOS DE GENERACIÓN PARA FILTRADO ESTRICTO ---
+const GEN_ID_RANGES = {
+    kanto: [1, 151],
+    johto: [152, 251],
+    hoenn: [252, 386],
+    sinnoh: [387, 493],
+    unova: [494, 649],
+    kalos: [650, 721],
+    alola: [722, 809],
+    galar: [810, 905], // Incluye especies nuevas de Hisui (como Wyrdeer)
+    paldea: [906, 1025]
 };
 
 const GENERATION_NAMES = {
@@ -27,6 +40,11 @@ export const Game = {
     isLoadingPokemon: false,
     loadedRegions: null,
 
+    /**
+     * Carga los Pokémon de las regiones seleccionadas.
+     * NOTA: Para que Arcanine de Hisui (ID 10231) aparezca, el archivo api.js 
+     * debe buscar en las 'varieties' de la especie 59 cuando la región sea 'hisui'.
+     */
     loadPokemon: () => {
         return new Promise(async (resolve) => {
             if (Game.isLoadingPokemon) {
@@ -48,9 +66,11 @@ export const Game = {
     
             Game.isLoadingPokemon = true;
     
+            // Transformamos regiones en nombres de pokedex de la API
             const pokedexNames = regions.map(r => REGION_RANGES[r]).flat();
             
             const onComplete = (pokemonList) => {
+                // Eliminamos duplicados por ID y ordenamos
                 const uniquePokemon = Array.from(new Map(pokemonList.map(p => [p.id, p])).values());
                 uniquePokemon.sort((a, b) => a.id - b.id);
                 
@@ -63,10 +83,11 @@ export const Game = {
             const onProgress = (pokedexName, current, total) => {
                 const loadingText = document.querySelector("#loadingScreen p");
                 if (loadingText) {
-                    loadingText.textContent = `Cargando ${pokedexName}... (${current}/${total})`;
+                    loadingText.textContent = `Investigando ${pokedexName}... (${current}/${total})`;
                 }
             };
     
+            // Llamada a api.js para obtener los datos reales
             await loadAllPokemon(pokedexNames, onProgress, onComplete);
         });
     },
@@ -216,21 +237,52 @@ export const Game = {
         Game.updateStartButton();
     },
     
+    /**
+     * Filtra la base de datos de Pokémon basándose en regiones y tipos.
+     * CORRECCIÓN: Ahora permite explícitamente variantes de Hisui (ID > 10000)
+     * cuando se selecciona la región que contiene la Pokedex de Hisui.
+     */
     filterPokemonDB: () => {
-        const regions = Array.from(gameState.config.selectedRegions);
-        const types = Array.from(gameState.config.selectedTypes);
+        const selectedRegions = Array.from(gameState.config.selectedRegions);
+        const selectedTypes = Array.from(gameState.config.selectedTypes);
 
         let filtered = gameState.fullPokemonDB;
 
-        if (regions.length > 0) {
-            const regionPokedexNames = regions.map(r => REGION_RANGES[r]).flat();
+        if (selectedRegions.length > 0) {
             filtered = filtered.filter(p => {
-                return p.pokedexes && p.pokedexes.some(pokedex => regionPokedexNames.includes(pokedex.name));
+                return selectedRegions.some(region => {
+                    const range = GEN_ID_RANGES[region];
+                    if (!range) return false;
+
+                    const regionPokedexes = REGION_RANGES[region]; 
+                    const regionPokedexList = Array.isArray(regionPokedexes) ? regionPokedexes : [regionPokedexes];
+                    
+                    // Verificamos si el Pokémon tiene esta Pokedex en sus metadatos
+                    const isInPokedex = p.pokedexes && p.pokedexes.some(px => {
+                        const pxName = typeof px === 'string' ? px : px.name;
+                        return regionPokedexList.includes(pxName);
+                    });
+                    
+                    if (!isInPokedex) return false;
+
+                    // 1. Pokémon nativos de la generación (ID estándar)
+                    if (p.id >= range[0] && p.id <= range[1]) return true;
+
+                    // 2. Variantes Regionales (ID > 10000)
+                    if (p.id > 10000) {
+                        const name = p.name.toLowerCase();
+                        if (region === 'alola' && name.includes('-alola')) return true;
+                        if (region === 'galar' && (name.includes('-galar') || name.includes('-hisui'))) return true;
+                        if (region === 'paldea' && name.includes('-paldea')) return true;
+                    }
+                    
+                    return false;
+                });
             });
         }
         
-        if (types.length > 0) {
-            filtered = filtered.filter(p => p.types.some(t => types.includes(t.toLowerCase())));
+        if (selectedTypes.length > 0) {
+            filtered = filtered.filter(p => p.types.some(t => selectedTypes.includes(t.toLowerCase())));
         }
 
         gameState.pokemonList = filtered;
@@ -411,7 +463,6 @@ export const Game = {
             const data = docSnap.data();
             gameState.online.data = data;
 
-            // --- CORRECCIÓN: Carga de datos fuera del if de fase ---
             if (data.config) {
                 gameState.config.selectedRegions = new Set(data.config.regions);
                 gameState.config.selectedTypes = new Set(data.config.types);
@@ -498,17 +549,14 @@ export const Game = {
                 
                 Game.handleOnlineActions(data);
 
-                // --- EMOTES ---
                 if (data.lastEmote && data.lastEmote.sender !== gameState.online.myId) {
                     const lastTs = window.lastEmoteTs || 0;
                     if (data.lastEmote.timestamp > lastTs) {
                         window.lastEmoteTs = data.lastEmote.timestamp;
-                        // --- CORRECCIÓN: Llamada a UI.showEmoteToast ---
                         UI.showEmoteToast(data.lastEmote.content);
                     }
                 }
 
-                // --- HISTORIAL ---
                 if (data.history) {
                     gameState.history = data.history;
                     const historyModal = document.getElementById('historyModal');
@@ -597,7 +645,6 @@ export const Game = {
         updateDoc(doc(db, 'games', gameState.online.gameId), { lastAction: { type: 'question', sender: gameState.online.myId, criteria, isType, isGeneration, status: 'pending' } });
     },
     
-    // --- CORRECCIÓN: Llamada a UI.showEmoteToast ---
     sendEmote: async (emoji) => {
         if (!gameState.online.gameId) return;
         try {
@@ -657,11 +704,10 @@ export const Game = {
 
         await updateDoc(doc(db, 'games', gameState.online.gameId), { 
             lastAction: { ...act, status: 'answered', response: res },
-            history: arrayUnion(historyEntry) // Usar arrayUnion exportado
+            history: arrayUnion(historyEntry)
         });
     },
     
-    // Función auxiliar para texto del historial
     formatQuestionText: (criteria, isType, isGeneration) => {
         if (isGeneration) {
             const genNames = criteria.map(g => GENERATION_NAMES[g] || g).join(', ');
@@ -679,12 +725,11 @@ export const Game = {
     addToLocalHistory: (criteria, isType, isGeneration, response) => {
         const qText = Game.formatQuestionText(criteria, isType, isGeneration);
         const playerLabel = gameState.local.turn === 1 ? "J1" : "J2";
-        gameState.history.unshift({ // Agregar al principio
+        gameState.history.unshift({ 
             question: qText,
             answer: response,
             turn: playerLabel
         });
-        // Si el modal está abierto en local, actualizar
         const historyModal = document.getElementById('historyModal');
         if (historyModal && !historyModal.classList.contains('hidden')) {
             UI.renderHistory(gameState.history);
@@ -692,7 +737,6 @@ export const Game = {
     },
 
     applyFilter: (criteria, isType, keep, getUpdateObj = false) => {
-        // En local, guardar en historial
         if (gameState.mode === 'local') {
             Game.addToLocalHistory(criteria, isType, false, keep);
         }
@@ -720,7 +764,6 @@ export const Game = {
     },
 
     applyGenerationFilter: (generations, keep, getUpdateObj = false) => {
-        // En local, guardar en historial
         if (gameState.mode === 'local') {
             Game.addToLocalHistory(generations, false, true, keep);
         }
